@@ -1,0 +1,8 @@
+cradle:
+  cabal:
+    - path: "src-lib"
+      component: "astro-stacker:lib:astro-stacker"
+    - path: "app"
+      component: "astro-stacker:exe:astro-stacker"
+    - path: "test"
+      component: "astro-stacker:test:astro-stacker-test"
