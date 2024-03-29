@@ -1,6 +1,8 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs";
+    # nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
+    polysemy-utilsSrc.url = "github:lzszt/polysemy-utils";
     flake-utils.url = "github:numtide/flake-utils";
   };
   outputs = inputs@{ self, flake-utils, ... }:
