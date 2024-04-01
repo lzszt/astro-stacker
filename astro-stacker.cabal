@@ -23,6 +23,9 @@ common options
 library
     import:           options
     exposed-modules:  MyLib
+                    , Locating
+                    , Stacking
+                    , Types
     -- other-modules:
     -- other-extensions:
     build-depends:    base
@@ -35,6 +38,7 @@ library
                     , time
                     , JuicyPixels
                     , async
+                    , containers
     hs-source-dirs:   src-lib
     default-language: GHC2021
 
