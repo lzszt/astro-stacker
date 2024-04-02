@@ -183,7 +183,7 @@ generateWannabe x y radiusDelta pds =
         then Just $ WannabeStar x y ((meanRadius1 + meanRadius2) / 2)
         else Nothing
 
-type StarStructure = Map.Map Int [WannabeStar]
+type StarStructure = Map.Map Int (Set.Set WannabeStar)
 
 isWithinStar :: Int -> Int -> StarStructure -> Bool
 isWithinStar x y wss =
@@ -193,7 +193,7 @@ isWithinStar x y wss =
           && ws.posX <= x + maxStarRadius
           && ws.posY >= y - maxStarRadius
           && ws.posY <= y + maxStarRadius
-   in any (\ws -> nearPixel ws && withinStar x y ws) $ fromMaybe [] $ wss Map.!? (x `div` maxStarSize)
+   in any (\ws -> nearPixel ws && withinStar x y ws) $ fromMaybe Set.empty $ wss Map.!? (x `div` maxStarSize)
 
 addToStarStructure :: WannabeStar -> StarStructure -> StarStructure
 addToStarStructure ws =
@@ -203,8 +203,8 @@ addToStarStructure ws =
       insertAt =
         Map.alter
           ( \case
-              Nothing -> Just [ws]
-              Just wss -> Just $ ws : wss
+              Nothing -> Just $ Set.singleton ws
+              Just wss -> Just $ Set.insert ws wss
           )
    in if minX == maxX
         then insertAt minX
@@ -232,29 +232,27 @@ locateStarsDSS img@P.Image {..} =
         then
           map wannabeToStar $
             Set.toList $
-              Set.fromList $
-                concat $
-                  Map.elems $
-                    foldl'
-                      ( \wannabes radiusDelta ->
-                          P.pixelFold
-                            ( \wannabeStars x y pixelIntensity ->
-                                let withinKnownStar = isWithinStar x y wannabeStars
-                                 in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
-                                      then
-                                        let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
-                                         in if not mainOk && not brighterPixel && maxRadius > 2
-                                              then case generateWannabe x y radiusDelta pds of
-                                                Nothing -> wannabeStars
-                                                Just newStar -> addToStarStructure newStar wannabeStars
-                                              else wannabeStars
-                                      else wannabeStars
-                            )
-                            wannabes
-                            img
-                      )
-                      Map.empty
-                      deltaRadii
+              Map.foldl' Set.union Set.empty $
+                foldl'
+                  ( \wannabes radiusDelta ->
+                      P.pixelFold
+                        ( \wannabeStars x y pixelIntensity ->
+                            let withinKnownStar = isWithinStar x y wannabeStars
+                             in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
+                                  then
+                                    let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
+                                     in if not mainOk && not brighterPixel && maxRadius > 2
+                                          then case generateWannabe x y radiusDelta pds of
+                                            Nothing -> wannabeStars
+                                            Just newStar -> addToStarStructure newStar wannabeStars
+                                          else wannabeStars
+                                  else wannabeStars
+                        )
+                        wannabes
+                        img
+                  )
+                  Map.empty
+                  deltaRadii
         else []
 
 wannabeToStar :: WannabeStar -> Star
@@ -303,8 +301,8 @@ test = do
   let alls = locateStarsDSS lumaTiff
   print $ length alls
 
--- let wannabes = sort alls
--- mapM_ print wannabes
+  let wannabes = sort alls
+  mapM_ print wannabes
 
 -- P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawStars lumaTiff wannabes
 
