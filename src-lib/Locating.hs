@@ -168,8 +168,8 @@ isWannabeStar img backgroundIntensity x y pixelIntensity =
         (initialDirectionState, directions)
         testRadii
 
-generateWannabe :: Int -> Int -> Int -> (DirectionState, [PixelDirection]) -> Maybe WannabeStar
-generateWannabe x y radiusDelta (_, pds) =
+generateWannabe :: Int -> Int -> Int -> [PixelDirection] -> Maybe WannabeStar
+generateWannabe x y radiusDelta pds =
   let wannabeStarOk =
         all (<= radiusDelta) $
           [abs ((pds !! k1).radius - (pds !! k2).radius) | k1 <- [0 .. 3], k2 <- [0 .. 3], k1 /= k2]
@@ -221,9 +221,9 @@ locateStarsDSS img@P.Image {..} =
                         let withinKnownStar = isWithinStar x y wannabeStars
                          in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
                               then
-                                let res@(DirectionState {..}, _) = isWannabeStar img background x y pixelIntensity
+                                let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
                                  in if not mainOk && not brighterPixel && maxRadius > 2
-                                      then case generateWannabe x y radiusDelta res of
+                                      then case generateWannabe x y radiusDelta pds of
                                         Nothing -> wannabeStars
                                         Just newStar -> newStar : wannabeStars
                                       else wannabeStars
