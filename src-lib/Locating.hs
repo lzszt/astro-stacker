@@ -113,22 +113,20 @@ safePixelAt img@P.Image {..} x y
 pixelAtDefault :: P.Pixel a => a -> P.Image a -> Int -> Int -> a
 pixelAtDefault def img x y = fromMaybe def $ safePixelAt img x y
 
-isWannabeStar :: P.Image Word16 -> Word16 -> Int -> Int -> Word16 -> (DirectionState, [PixelDirection])
-isWannabeStar img backgroundIntensity x y pixelIntensity =
-  let directions = map (uncurry mkPixelDirection) [(0, -1), (1, 0), (0, 1), (-1, 0), (1, -1), (1, 1), (-1, 1), (-1, -1)]
-      testRadii = [1 .. maxStarSize]
-   in foldl'
-        ( \acc@(ds@DirectionState {..}, dirs) testedRadius ->
-            if mainOk && not brighterPixel
-              then
-                let newDirs = map (\dir -> dir {intensity = pixelAtDefault 0 img (x + dir.dirX * testedRadius) (y + dir.dirY * testedRadius)}) dirs
-                 in foldl'
-                      ( \(ds, pds) pd ->
-                          if brighterPixel
-                            then (ds, pd : pds)
-                            else
-                              if pd.pxOk > 0
-                                then
+concentricCircles ::
+  Int ->
+  Word16 ->
+  Word16 ->
+  (DirectionState, [PixelDirection]) ->
+  [PixelDirection] ->
+  (DirectionState, [PixelDirection])
+concentricCircles testedRadius backgroundIntensity pixelIntensity =
+  go
+  where
+    go acc [] = acc
+    go (ds@DirectionState {..}, pds) (pd : restPds)
+      | brighterPixel = (ds, pd : pds <> restPds)
+      | pd.pxOk > 0 =
                                   let (newDS, newPd) =
                                         if fromIntegral @_ @Double (pd.intensity - backgroundIntensity) < fromIntegral (pixelIntensity - backgroundIntensity) / 4
                                           then
@@ -142,14 +140,27 @@ isWannabeStar img backgroundIntensity x y pixelIntensity =
                                                 if pd.intensity > pixelIntensity
                                                   then (ds, pd {nrBrighterPixels = pd.nrBrighterPixels + 1})
                                                   else (ds, pd)
-                                   in if newPd.pxOk > 0
+           in go
+                ( if newPd.pxOk > 0
                                         then (newDS {mainOk = True}, newPd : pds)
                                         else (newDS, newPd : pds)
-                                else
-                                  if pd.nrBrighterPixels > 2
-                                    then (ds {brighterPixel = True}, pd : pds)
-                                    else (ds, pd : pds)
-                      )
+                )
+                restPds
+      | otherwise = go (ds {brighterPixel = pd.nrBrighterPixels > 2 || ds.brighterPixel}, pd : pds) restPds
+
+isWannabeStar :: P.Image Word16 -> Word16 -> Int -> Int -> Word16 -> (DirectionState, [PixelDirection])
+isWannabeStar img backgroundIntensity x y pixelIntensity =
+  let directions = map (uncurry mkPixelDirection) [(0, -1), (1, 0), (0, 1), (-1, 0), (1, -1), (1, 1), (-1, 1), (-1, -1)]
+      testRadii = [1 .. maxStarSize]
+   in foldl'
+        ( \acc@(ds@DirectionState {..}, dirs) testedRadius ->
+            if mainOk && not brighterPixel
+              then
+                let newDirs = map (\dir -> dir {intensity = pixelAtDefault 0 img (x + dir.dirX * testedRadius) (y + dir.dirY * testedRadius)}) dirs
+                 in concentricCircles
+                      testedRadius
+                      backgroundIntensity
+                      pixelIntensity
                       (ds {mainOk = False}, [])
                       newDirs
               else acc
