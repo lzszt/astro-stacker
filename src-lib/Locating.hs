@@ -55,11 +55,13 @@ data WannabeStar = WannabeStar
   }
   deriving (Show)
 
+-- https://github.com/deepskystacker/DSS/blob/4fe3e59bf4c9d4167221e957617e43cd26da4ca4/DeepSkyStackerKernel/Stars.h#L112C54-L112C66
+radiusFactor :: Double
+radiusFactor = 2.35 / 1.5
+
 withinStar :: Int -> Int -> WannabeStar -> Bool
-withinStar x y ws@WannabeStar {..} =
-  let -- https://github.com/deepskystacker/DSS/blob/4fe3e59bf4c9d4167221e957617e43cd26da4ca4/DeepSkyStackerKernel/Stars.h#L112C54-L112C66
-      radiusFactor = 2.35 / 1.5
-   in distance <= meanRadius * radiusFactor
+withinStar x y WannabeStar {..} =
+  distance <= meanRadius * radiusFactor
   where
     distance = sqrt $ fromIntegral $ (posX - x) ^ 2 + (posY - y) ^ 2
 
@@ -168,6 +170,18 @@ generateWannabe x y radiusDelta (_, pds) =
         then Just $ WannabeStar x y ((meanRadius1 + meanRadius2) / 2)
         else Nothing
 
+isWithinStar :: Int -> Int -> [WannabeStar] -> Bool
+isWithinStar x y =
+  let maxStarRadius = ceiling $ fromIntegral maxStarSize * radiusFactor
+   in any (withinStar x y)
+        . filter
+          ( \ws ->
+              ws.posX >= x - maxStarRadius
+                && ws.posX <= x + maxStarRadius
+                && ws.posY >= y - maxStarRadius
+                && ws.posY <= y + maxStarRadius
+          )
+
 locateStarsDSS :: P.Image Word16 -> [Star]
 locateStarsDSS img@P.Image {..} =
   let maxIntensity = VS.foldl1' max imageData
@@ -193,7 +207,7 @@ locateStarsDSS img@P.Image {..} =
               ( \wannabes radiusDelta ->
                   P.pixelFold
                     ( \wannabeStars x y pixelIntensity ->
-                        let withinKnownStar = any (withinStar x y) wannabeStars
+                        let withinKnownStar = isWithinStar x y wannabeStars
                          in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
                               then
                                 let res@(DirectionState {..}, _) = isWannabeStar img background x y pixelIntensity
@@ -256,9 +270,10 @@ test = do
 
   let alls = locateStarsDSS lumaTiff
   print $ length alls
-  let wannabes = alls
-  print wannabes
-  P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawStars lumaTiff wannabes
+
+-- let wannabes = alls
+-- print wannabes
+-- P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawStars lumaTiff wannabes
 
 splitIntoQuarters :: P.Image a -> (P.Image a, P.Image a, P.Image a, P.Image a)
 splitIntoQuarters P.Image {..} = undefined
@@ -278,3 +293,33 @@ splitIntoQuarters P.Image {..} = undefined
 -- iterate over image
 --    get pixel intensity
 --    if intensity is >= intensityThreshold
+
+---------------------------------------------------------------
+-- Benchmarking
+---------------------------------------------------------------
+
+---------------------------------------------------------------
+-- Start
+---------------------------------------------------------------
+
+-- Width: 4095
+-- Height: 2842
+-- 1449
+
+-- ________________________________________________________
+-- Executed in   29.21 secs    fish           external
+--    usr time   29.08 secs    1.32 millis   29.08 secs
+--    sys time    0.10 secs    0.24 millis    0.10 secs
+
+---------------------------------------------------------------
+-- filter stars around current position
+---------------------------------------------------------------
+
+-- Width: 4095
+-- Height: 2842
+-- 1449
+
+-- ________________________________________________________
+-- Executed in   15.64 secs    fish           external
+--    usr time   15.58 secs  776.00 micros   15.57 secs
+--    sys time    0.07 secs    0.00 micros    0.07 secs
