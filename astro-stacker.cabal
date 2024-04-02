@@ -25,6 +25,7 @@ library
     exposed-modules:  MyLib
                     , Locating
                     , Stacking
+                    , StarMatching
                     , Types
     -- other-modules:
     -- other-extensions:

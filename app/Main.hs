@@ -2,7 +2,7 @@ module Main where
 
 import Data.Maybe
 import Effects.Logging qualified as Log
-import Locating
+import StarMatching
 import MyLib
 import System.Environment (getArgs)
 

@@ -12,17 +12,19 @@ import Data.List
 import Data.Maybe
 import Types
 
-rotate :: Double -> (Int, Int) -> (Int, Int)
-rotate rotation (x, y) =
+rotate :: Double -> Position -> Position
+rotate rotation Position {..} =
   let x' = fromIntegral x
       y' = fromIntegral y
-   in (round $ x' * cos rotation - y' * sin rotation, round $ y' * cos rotation + x' * sin rotation)
+   in Position
+        (round $ x' * cos rotation - y' * sin rotation)
+        (round $ y' * cos rotation + x' * sin rotation)
 
-applyAlignment :: Alignment -> (Int, Int) -> (Int, Int)
+applyAlignment :: Alignment -> Position -> Position
 applyAlignment Alignment {..} = translate . rotate rotation
   where
-    translate :: (Int, Int) -> (Int, Int)
-    translate (x, y) = (x + offsetX, y + offsetY)
+    translate :: Position -> Position
+    translate Position {..} = Position (x + offsetX) (y + offsetY)
 
 avg :: [Maybe P.PixelRGB16] -> P.PixelRGBA16
 avg xs =
@@ -73,18 +75,18 @@ stackImages images@((P.Image w h _, Alignment offX offY rot) : sources) =
 
     updateCorners :: OuterCorners -> Int -> Int -> Alignment -> OuterCorners
     updateCorners cor height width alg =
-      let imageCorners = [(0, 0), (0, height), (width, 0), (width, height)]
+      let imageCorners = map (uncurry Position) [(0, 0), (0, height), (width, 0), (width, height)]
 
           alignedImageCorners = map (applyAlignment alg) imageCorners
        in foldl' applyCorner cor alignedImageCorners
 
-    applyCorner :: OuterCorners -> (Int, Int) -> OuterCorners
+    applyCorner :: OuterCorners -> Position -> OuterCorners
     applyCorner
       OuterCorners
         { upperLeftCorner = (ulX, ulY),
           lowerRightCorner = (lrX, lrY)
         }
-      (x, y) =
+      Position {..} =
         OuterCorners
           { upperLeftCorner = (min ulX x, min ulY y),
             lowerRightCorner = (max lrX x, max lrY y)
@@ -92,7 +94,7 @@ stackImages images@((P.Image w h _, Alignment offX offY rot) : sources) =
 
     lookupPixel :: (Int, Int) -> Int -> Int -> (Tiff, Alignment) -> Maybe P.PixelRGB16
     lookupPixel (ulX, ulY) outX outY (img@P.Image {..}, Alignment offX offY rot) =
-      let (x, y) = rotate (negate rot) (outX + ulX - offX, outY + ulY - offY)
+      let Position {..} = rotate (negate rot) $ Position (outX + ulX - offX) (outY + ulY - offY)
        in if x >= 0
             && x < imageWidth
             && y >= 0
@@ -100,9 +102,9 @@ stackImages images@((P.Image w h _, Alignment offX offY rot) : sources) =
             then Just $ P.pixelAt img x y
             else Nothing
 
-starLocationApplyAlignment :: Alignment -> StarLocation -> StarLocation
-starLocationApplyAlignment alg (StarLocation x y) =
-  uncurry StarLocation $ applyAlignment alg (x, y)
+starLocationApplyAlignment :: Alignment -> Star -> Star
+starLocationApplyAlignment alg (Star pos starRadius) =
+  (`Star` starRadius) $ applyAlignment alg pos
 
 -- testImgs :: IO [(Tiff, Alignment)]
 -- testImgs = do

@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections #-}
 
-module Locating (locateStars, drawStarLocations, test) where
+module Locating where
 
 import Codec.Picture qualified as P
 import Codec.Picture.Types qualified as P
@@ -15,44 +14,6 @@ import Data.Vector.Storable qualified as VS
 import Data.Word
 import Debug.Trace
 import Types
-
-locateStars :: Tiff -> [StarLocation]
-locateStars img =
-  let yImg@P.Image {..} = flattenImage $ P.extractLumaPlane img
-      maxBrightness = VS.maximum imageData
-      minBrightness = VS.minimum imageData
-      brightnessThreshold = 0.01
-      minBrightnessForStar = maxBrightness - round @Double (brightnessThreshold * fromIntegral (maxBrightness - minBrightness))
-   in P.pixelFold
-        ( \acc x y pixel ->
-            if pixel >= minBrightnessForStar
-              then
-                let newStarLoc = StarLocation {starLocationX = x, starLocationY = y}
-                 in newStarLoc : acc
-              else acc
-        )
-        []
-        yImg
-
-drawStarLocations :: [StarLocation] -> Tiff -> Tiff
-drawStarLocations starLocations =
-  P.pixelMapXY
-    ( \pX pY p ->
-        let isOnAnyCross xy = any (isOnCross xy) starLocations
-            isOnCross (x, y) StarLocation {..} =
-              ( abs (x - starLocationX) <= crossSize
-                  && abs (y - starLocationY) <= crossThickness
-              )
-                || ( abs (y - starLocationY) <= crossSize
-                       && abs (x - starLocationX) <= crossThickness
-                   )
-            crossSize = 60
-            crossThickness = 2
-            crossColor = P.PixelRGB16 maxBound maxBound maxBound
-         in if isOnAnyCross (pX, pY)
-              then crossColor
-              else p
-    )
 
 flattenImage ::
   forall a.
@@ -194,8 +155,8 @@ isWannabeStar img backgroundIntensity x y pixelIntensity =
         (initialDirectionState, directions)
         testRadii
 
-wannabeToStar :: Int -> Int -> Int -> (DirectionState, [PixelDirection]) -> Maybe WannabeStar
-wannabeToStar x y radiusDelta (_, pds) =
+generateWannabe :: Int -> Int -> Int -> (DirectionState, [PixelDirection]) -> Maybe WannabeStar
+generateWannabe x y radiusDelta (_, pds) =
   let wannabeStarOk =
         all (<= radiusDelta) $
           [abs ((pds !! k1).radius - (pds !! k2).radius) | k1 <- [0 .. 3], k2 <- [0 .. 3], k1 /= k2]
@@ -207,7 +168,7 @@ wannabeToStar x y radiusDelta (_, pds) =
         then Just $ WannabeStar x y ((meanRadius1 + meanRadius2) / 2)
         else Nothing
 
-locateStarsDSS :: P.Image Word16 -> [WannabeStar]
+locateStarsDSS :: P.Image Word16 -> [Star]
 locateStarsDSS img@P.Image {..} =
   let maxIntensity = VS.foldl1' max imageData
       histogram = Map.toAscList $ VS.foldl' (\acc pixelIntensity -> Map.insertWith (+) pixelIntensity (1 :: Word16) acc) Map.empty imageData
@@ -227,27 +188,31 @@ locateStarsDSS img@P.Image {..} =
       deltaRadii = [0 .. 3]
    in if maxIntensity >= intensityThreshold
         then
-          foldl'
-            ( \wannabes radiusDelta ->
-                P.pixelFold
-                  ( \wannabeStars x y pixelIntensity ->
-                      let withinKnownStar = any (withinStar x y) wannabeStars
-                       in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
-                            then
-                              let res@(DirectionState {..}, _) = isWannabeStar img background x y pixelIntensity
-                               in if not mainOk && not brighterPixel && maxRadius > 2
-                                    then case wannabeToStar x y radiusDelta res of
-                                      Nothing -> wannabeStars
-                                      Just newStar -> newStar : wannabeStars
-                                    else wannabeStars
-                            else wannabeStars
-                  )
-                  wannabes
-                  img
-            )
-            []
-            deltaRadii
+          map wannabeToStar $
+            foldl'
+              ( \wannabes radiusDelta ->
+                  P.pixelFold
+                    ( \wannabeStars x y pixelIntensity ->
+                        let withinKnownStar = any (withinStar x y) wannabeStars
+                         in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
+                              then
+                                let res@(DirectionState {..}, _) = isWannabeStar img background x y pixelIntensity
+                                 in if not mainOk && not brighterPixel && maxRadius > 2
+                                      then case generateWannabe x y radiusDelta res of
+                                        Nothing -> wannabeStars
+                                        Just newStar -> newStar : wannabeStars
+                                      else wannabeStars
+                              else wannabeStars
+                    )
+                    wannabes
+                    img
+              )
+              []
+              deltaRadii
         else []
+
+wannabeToStar :: WannabeStar -> Star
+wannabeToStar WannabeStar {..} = Star (Position posX posY) meanRadius
 
 circlePixels :: Int -> Int -> Double -> Map.Map Int (Set.Set Int)
 circlePixels x y r =
@@ -257,10 +222,10 @@ circlePixels x y r =
       | angle <- map (\a -> a / 180 * pi) [0, 5 .. 360]
     ]
 
-drawWannabeStars :: P.Image Word16 -> [WannabeStar] -> P.Image P.PixelRGB16
-drawWannabeStars img wannabes =
-  let centers = map (\WannabeStar {..} -> (posX, posY)) wannabes
-      circles = Map.unionsWith Set.union $ map (\WannabeStar {..} -> circlePixels posX posY meanRadius) wannabes
+drawStars :: P.Image Word16 -> [Star] -> P.Image P.PixelRGB16
+drawStars img stars =
+  let centers = map (\s -> (s.starPosition.x, s.starPosition.y)) stars
+      circles = Map.unionsWith Set.union $ map (\s -> circlePixels s.starPosition.x s.starPosition.y s.starRadius) stars
    in P.pixelMapXY
         ( \pX pY p ->
             if (pX, pY) `elem` centers
@@ -293,7 +258,7 @@ test = do
   print $ length alls
   let wannabes = alls
   print wannabes
-  P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawWannabeStars lumaTiff wannabes
+  P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawStars lumaTiff wannabes
 
 splitIntoQuarters :: P.Image a -> (P.Image a, P.Image a, P.Image a, P.Image a)
 splitIntoQuarters P.Image {..} = undefined

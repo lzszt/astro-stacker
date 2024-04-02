@@ -43,17 +43,17 @@ getName = \case
   StarsLocated name _ _ -> name
   Aligned name _ -> name
 
-locateStars :: Members '[Cache.Cache StarLocationKey (Image StarsLocated)] r => Image Clean -> Sem r (Image StarsLocated)
-locateStars (Clean name img) = do
-  let startLocationKey = StartLocationKey name
-  mLocated <- Cache.get startLocationKey
-  case mLocated of
-    Nothing -> do
-      let starLocations = Locating.locateStars img
-          located = StarsLocated name starLocations $ Locating.drawStarLocations starLocations img
-      Cache.update startLocationKey located
-      pure located
-    Just located -> pure located
+-- locateStars :: Members '[Cache.Cache StarLocationKey (Image StarsLocated)] r => Image Clean -> Sem r (Image StarsLocated)
+-- locateStars (Clean name img) = do
+--   let startLocationKey = StartLocationKey name
+--   mLocated <- Cache.get startLocationKey
+--   case mLocated of
+--     Nothing -> do
+--       let starLocations = Locating.locateStars img
+--           located = StarsLocated name starLocations $ Locating.drawStarLocations starLocations img
+--       Cache.update startLocationKey located
+--       pure located
+--     Just located -> pure located
 
 -- denoise :: Image Raw -> Image Clean
 -- denoise (Raw name img) =
@@ -147,26 +147,26 @@ runMasterCache = interpret $ \case
     path <- inWorkingDir masterTiffPath
     embed $ P.writeTiff path $ getTiff v
 
-runStarsLocatedCache :: Members '[Embed IO, Log.Log, Reader.Reader WorkingDir] r => Sem (Cache.Cache StarLocationKey (Image StarsLocated) : r) a -> Sem r a
-runStarsLocatedCache = interpret $ \case
-  Cache.Get k@(StartLocationKey name) -> do
-    path <- inWorkingDir name
-    starLocationFile <- inWorkingDir (name <> "_star_locations.txt")
-    present <- embed $ doesFileExist starLocationFile
-    if present
-      then do
-        Log.logDebug $ "Cache hit for: " <> show k
-        starLocations <- map (uncurry StarLocation . read) . lines <$> embed (readFile' starLocationFile)
-        Just . StarsLocated name starLocations . getTiff <$> embed (loadTiff path)
-      else do
-        Log.logDebug $ "Cache miss for: " <> show k
-        pure Nothing
-  Cache.Update k@(StartLocationKey name) (StarsLocated _ starLocations img) -> do
-    Log.logDebug $ "Updated cache entry for " <> show k
-    path <- inWorkingDir (name <> "_stars.tiff")
-    embed $ P.writeTiff path img
-    starLocationFile <- inWorkingDir (name <> "_star_locations.txt")
-    embed $ writeFile starLocationFile $ unlines $ map (\StarLocation {..} -> show (starLocationX, starLocationY)) starLocations
+-- runStarsLocatedCache :: Members '[Embed IO, Log.Log, Reader.Reader WorkingDir] r => Sem (Cache.Cache StarLocationKey (Image StarsLocated) : r) a -> Sem r a
+-- runStarsLocatedCache = interpret $ \case
+--   Cache.Get k@(StartLocationKey name) -> do
+--     path <- inWorkingDir name
+--     starLocationFile <- inWorkingDir (name <> "_star_locations.txt")
+--     present <- embed $ doesFileExist starLocationFile
+--     if present
+--       then do
+--         Log.logDebug $ "Cache hit for: " <> show k
+--         starLocations <- map (uncurry StarLocation . read) . lines <$> embed (readFile' starLocationFile)
+--         Just . StarsLocated name starLocations . getTiff <$> embed (loadTiff path)
+--       else do
+--         Log.logDebug $ "Cache miss for: " <> show k
+--         pure Nothing
+--   Cache.Update k@(StartLocationKey name) (StarsLocated _ starLocations img) -> do
+--     Log.logDebug $ "Updated cache entry for " <> show k
+--     path <- inWorkingDir (name <> "_stars.tiff")
+--     embed $ P.writeTiff path img
+--     starLocationFile <- inWorkingDir (name <> "_star_locations.txt")
+--     embed $ writeFile starLocationFile $ unlines $ map (\(Star ) -> show (starLocationX, starLocationY)) starLocations
 
 runCleanCache :: Members '[Embed IO, Log.Log, Reader.Reader WorkingDir] r => Sem (Cache.Cache CleanKey (Image Clean) : r) a -> Sem r a
 runCleanCache = interpret $ \case
@@ -199,22 +199,22 @@ calculateMaster masterPath origs = do
       Cache.update cacheKey cacheMaster
       pure cacheMaster
 
-computeAlignment :: [StarLocation] -> [StarLocation] -> Alignment
-computeAlignment sts1 sts2 = minimumBy (compare `on` alignmentError) [Alignment offX offY rot | rot <- [-1, -0.9 .. 1], offX <- [-20, -19 .. 20], offY <- [-20, -19 .. 20]]
-  where
-    (matchedSts1, matchedSts2) = matchStars (sts1, sts2)
-    alignmentError :: Alignment -> Int
-    alignmentError alg =
-      sum $
-        zipWith starDistance matchedSts1 $
-          map (starLocationApplyAlignment alg) matchedSts2
+-- computeAlignment :: [Star] -> [Star] -> Alignment
+-- computeAlignment sts1 sts2 = minimumBy (compare `on` alignmentError) [Alignment offX offY rot | rot <- [-1, -0.9 .. 1], offX <- [-20, -19 .. 20], offY <- [-20, -19 .. 20]]
+--   where
+--     (matchedSts1, matchedSts2) = matchStars (sts1, sts2)
+--     alignmentError :: Alignment -> Int
+--     alignmentError alg =
+--       sum $
+--         zipWith starDistance matchedSts1 $
+--           map (starLocationApplyAlignment alg) matchedSts2
 
-matchStars :: ([StarLocation], [StarLocation]) -> ([StarLocation], [StarLocation])
-matchStars (x, y) = (sort x, sort y)
+-- matchStars :: ([Star], [Star]) -> ([Star], [Star])
+-- matchStars (x, y) = (sort x, sort y)
 
-starDistance :: StarLocation -> StarLocation -> Int
-starDistance (StarLocation x1 y1) (StarLocation x2 y2) =
-  (x1 - x2) ^ 2 + (y1 - y2) ^ 2
+-- starDistance :: Star -> Star -> Int
+-- starDistance (Star x1 y1) (Star x2 y2) =
+--   (x1 - x2) ^ 2 + (y1 - y2) ^ 2
 
 withTiming :: Members '[Time.Time, Log.Log] r => String -> Sem r a -> Sem r a
 withTiming actName act = do
@@ -259,59 +259,59 @@ cleanImage (Master _ masterDark) (Master _ masterBias) loadSourceImg imagePath =
 newtype StarLocationKey = StartLocationKey {getLocationKey :: String}
   deriving (Show)
 
-run :: Log.Severity -> [FilePath] -> [FilePath] -> [FilePath] -> FilePath -> IO ()
-run logSeverity darks biass lights workingDir =
-  runM $
-    Reader.runReader (WorkingDir workingDir) $
-      Time.runTime $
-        Log.runLoggingWithTime (logConfig logSeverity) $
-          runStarsLocatedCache $
-            runMasterCache $ do
-              Log.logInfo $ "Darks: " <> show (length darks)
-              Log.logInfo $ "Biass: " <> show (length biass)
-              Log.logInfo $ "Lights: " <> show (length lights)
-              Log.logInfo $ "Working directory:  " <> workingDir
-              (masterDark, masterBias) <-
-                embed $
-                  runM
-                    ( Reader.runReader (WorkingDir workingDir) $
-                        Time.runTime $
-                          Log.runLoggingWithTime (logConfig logSeverity) $
-                            withTiming "MasterDark" $
-                              runMasterCache $
-                                calculateMaster "master_dark.tiff" darks
-                    )
-                    `Async.concurrently` runM
-                      ( Reader.runReader (WorkingDir workingDir) $
-                          Time.runTime $
-                            Log.runLoggingWithTime (logConfig logSeverity) $
-                              withTiming "MasterBias" $
-                                runMasterCache $
-                                  calculateMaster "master_bias.tiff" biass
-                      )
+-- run :: Log.Severity -> [FilePath] -> [FilePath] -> [FilePath] -> FilePath -> IO ()
+-- run logSeverity darks biass lights workingDir =
+--   runM $
+--     Reader.runReader (WorkingDir workingDir) $
+--       Time.runTime $
+--         Log.runLoggingWithTime (logConfig logSeverity) $
+--           runStarsLocatedCache $
+--             runMasterCache $ do
+--               Log.logInfo $ "Darks: " <> show (length darks)
+--               Log.logInfo $ "Biass: " <> show (length biass)
+--               Log.logInfo $ "Lights: " <> show (length lights)
+--               Log.logInfo $ "Working directory:  " <> workingDir
+--               (masterDark, masterBias) <-
+--                 embed $
+--                   runM
+--                     ( Reader.runReader (WorkingDir workingDir) $
+--                         Time.runTime $
+--                           Log.runLoggingWithTime (logConfig logSeverity) $
+--                             withTiming "MasterDark" $
+--                               runMasterCache $
+--                                 calculateMaster "master_dark.tiff" darks
+--                     )
+--                     `Async.concurrently` runM
+--                       ( Reader.runReader (WorkingDir workingDir) $
+--                           Time.runTime $
+--                             Log.runLoggingWithTime (logConfig logSeverity) $
+--                               withTiming "MasterBias" $
+--                                 runMasterCache $
+--                                   calculateMaster "master_bias.tiff" biass
+--                       )
 
-              cleanImages <-
-                embed $
-                  Async.mapConcurrently
-                    ( runM
-                        . Time.runTime
-                        . Reader.runReader (WorkingDir workingDir)
-                        . Log.runLoggingWithTime (logConfig logSeverity)
-                        . runCleanCache
-                        . cleanImage masterDark masterBias loadTiff
-                    )
-                    lights
+--               cleanImages <-
+--                 embed $
+--                   Async.mapConcurrently
+--                     ( runM
+--                         . Time.runTime
+--                         . Reader.runReader (WorkingDir workingDir)
+--                         . Log.runLoggingWithTime (logConfig logSeverity)
+--                         . runCleanCache
+--                         . cleanImage masterDark masterBias loadTiff
+--                     )
+--                     lights
 
-              embed $
-                Async.mapConcurrently_
-                  ( runM
-                      . Time.runTime
-                      . Reader.runReader (WorkingDir workingDir)
-                      . Log.runLoggingWithTime (logConfig logSeverity)
-                      . runStarsLocatedCache
-                      . locateStars
-                  )
-                  cleanImages
+--               embed $
+--                 Async.mapConcurrently_
+--                   ( runM
+--                       . Time.runTime
+--                       . Reader.runReader (WorkingDir workingDir)
+--                       . Log.runLoggingWithTime (logConfig logSeverity)
+--                       . runStarsLocatedCache
+--                       . locateStars
+--                   )
+--                   cleanImages
 
 ---------------------------------------------------------------
 -- Pipeline
