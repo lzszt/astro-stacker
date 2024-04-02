@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -5,6 +6,7 @@ module Locating where
 
 import Codec.Picture qualified as P
 import Codec.Picture.Types qualified as P
+import Data.Bits
 import Data.List
 import Data.Map.Strict qualified as Map
 import Data.Maybe
@@ -53,7 +55,7 @@ data WannabeStar = WannabeStar
     posY :: Int,
     meanRadius :: Double
   }
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 -- https://github.com/deepskystacker/DSS/blob/4fe3e59bf4c9d4167221e957617e43cd26da4ca4/DeepSkyStackerKernel/Stars.h#L112C54-L112C66
 radiusFactor :: Double
@@ -127,23 +129,23 @@ concentricCircles testedRadius backgroundIntensity pixelIntensity =
     go (ds@DirectionState {..}, pds) (pd : restPds)
       | brighterPixel = (ds, pd : pds <> restPds)
       | pd.pxOk > 0 =
-                                  let (newDS, newPd) =
-                                        if fromIntegral @_ @Double (pd.intensity - backgroundIntensity) < fromIntegral (pixelIntensity - backgroundIntensity) / 4
-                                          then
-                                            ( ds {maxRadius = max maxRadius testedRadius},
-                                              pd {radius = testedRadius, pxOk = pd.pxOk - 1}
-                                            )
-                                          else
-                                            if fromIntegral @_ @Double pd.intensity > 1.05 * fromIntegral pixelIntensity
-                                              then (ds {brighterPixel = True}, pd)
-                                              else
-                                                if pd.intensity > pixelIntensity
-                                                  then (ds, pd {nrBrighterPixels = pd.nrBrighterPixels + 1})
-                                                  else (ds, pd)
+          let (newDS, newPd) =
+                if pd.intensity - backgroundIntensity < (pixelIntensity - backgroundIntensity) `shiftR` 2
+                  then
+                    ( ds {maxRadius = max maxRadius testedRadius},
+                      pd {radius = testedRadius, pxOk = pd.pxOk - 1}
+                    )
+                  else
+                    if fromIntegral @_ @Double pd.intensity > 1.05 * fromIntegral pixelIntensity
+                      then (ds {brighterPixel = True}, pd)
+                      else
+                        if pd.intensity > pixelIntensity
+                          then (ds, pd {nrBrighterPixels = pd.nrBrighterPixels + 1})
+                          else (ds, pd)
            in go
                 ( if newPd.pxOk > 0
-                                        then (newDS {mainOk = True}, newPd : pds)
-                                        else (newDS, newPd : pds)
+                    then (newDS {mainOk = True}, newPd : pds)
+                    else (newDS, newPd : pds)
                 )
                 restPds
       | otherwise = go (ds {brighterPixel = pd.nrBrighterPixels > 2 || ds.brighterPixel}, pd : pds) restPds
@@ -181,17 +183,32 @@ generateWannabe x y radiusDelta pds =
         then Just $ WannabeStar x y ((meanRadius1 + meanRadius2) / 2)
         else Nothing
 
-isWithinStar :: Int -> Int -> [WannabeStar] -> Bool
-isWithinStar x y =
+type StarStructure = Map.Map Int [WannabeStar]
+
+isWithinStar :: Int -> Int -> StarStructure -> Bool
+isWithinStar x y wss =
   let maxStarRadius = ceiling $ fromIntegral maxStarSize * radiusFactor
-   in any (withinStar x y)
-        . filter
-          ( \ws ->
-              ws.posX >= x - maxStarRadius
-                && ws.posX <= x + maxStarRadius
-                && ws.posY >= y - maxStarRadius
-                && ws.posY <= y + maxStarRadius
+      nearPixel ws =
+        ws.posX >= x - maxStarRadius
+          && ws.posX <= x + maxStarRadius
+          && ws.posY >= y - maxStarRadius
+          && ws.posY <= y + maxStarRadius
+   in any (\ws -> nearPixel ws && withinStar x y ws) $ fromMaybe [] $ wss Map.!? (x `div` maxStarSize)
+
+addToStarStructure :: WannabeStar -> StarStructure -> StarStructure
+addToStarStructure ws =
+  let minX = (ws.posX - ceiling (ws.meanRadius * radiusFactor)) `div` maxStarSize
+
+      maxX = (ws.posX + ceiling (ws.meanRadius * radiusFactor)) `div` maxStarSize
+      insertAt =
+        Map.alter
+          ( \case
+              Nothing -> Just [ws]
+              Just wss -> Just $ ws : wss
           )
+   in if minX == maxX
+        then insertAt minX
+        else insertAt minX . insertAt (ws.posX `div` maxStarSize) . insertAt maxX
 
 locateStarsDSS :: P.Image Word16 -> [Star]
 locateStarsDSS img@P.Image {..} =
@@ -214,26 +231,30 @@ locateStarsDSS img@P.Image {..} =
    in if maxIntensity >= intensityThreshold
         then
           map wannabeToStar $
-            foldl'
-              ( \wannabes radiusDelta ->
-                  P.pixelFold
-                    ( \wannabeStars x y pixelIntensity ->
-                        let withinKnownStar = isWithinStar x y wannabeStars
-                         in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
-                              then
-                                let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
-                                 in if not mainOk && not brighterPixel && maxRadius > 2
-                                      then case generateWannabe x y radiusDelta pds of
-                                        Nothing -> wannabeStars
-                                        Just newStar -> newStar : wannabeStars
+            Set.toList $
+              Set.fromList $
+                concat $
+                  Map.elems $
+                    foldl'
+                      ( \wannabes radiusDelta ->
+                          P.pixelFold
+                            ( \wannabeStars x y pixelIntensity ->
+                                let withinKnownStar = isWithinStar x y wannabeStars
+                                 in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
+                                      then
+                                        let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
+                                         in if not mainOk && not brighterPixel && maxRadius > 2
+                                              then case generateWannabe x y radiusDelta pds of
+                                                Nothing -> wannabeStars
+                                                Just newStar -> addToStarStructure newStar wannabeStars
+                                              else wannabeStars
                                       else wannabeStars
-                              else wannabeStars
-                    )
-                    wannabes
-                    img
-              )
-              []
-              deltaRadii
+                            )
+                            wannabes
+                            img
+                      )
+                      Map.empty
+                      deltaRadii
         else []
 
 wannabeToStar :: WannabeStar -> Star
@@ -282,8 +303,9 @@ test = do
   let alls = locateStarsDSS lumaTiff
   print $ length alls
 
--- let wannabes = alls
--- print wannabes
+  let wannabes = sort alls
+  mapM_ print wannabes
+
 -- P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawStars lumaTiff wannabes
 
 splitIntoQuarters :: P.Image a -> (P.Image a, P.Image a, P.Image a, P.Image a)
