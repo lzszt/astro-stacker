@@ -6,6 +6,7 @@ module Types
     OuterCorners (..),
     Position (..),
     distance,
+    distanceSqr,
     Star (..),
     Image (..),
     Raw,
@@ -40,8 +41,11 @@ data Position = Position
   deriving (Show, Eq, Ord)
 
 distance :: Position -> Position -> Double
-distance p1 p2 =
-  sqrt $ fromIntegral $ (p1.x - p2.x) ^ 2 + (p1.y - p2.y) ^ 2
+distance p1 p2 = sqrt $ distanceSqr p1 p2
+
+distanceSqr :: Position -> Position -> Double
+distanceSqr p1 p2 =
+  fromIntegral $ (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
 
 data Star = Star
   { starPosition :: Position,
