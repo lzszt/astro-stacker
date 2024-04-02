@@ -303,8 +303,8 @@ test = do
   let alls = locateStarsDSS lumaTiff
   print $ length alls
 
-  let wannabes = sort alls
-  mapM_ print wannabes
+-- let wannabes = sort alls
+-- mapM_ print wannabes
 
 -- P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawStars lumaTiff wannabes
 
@@ -356,3 +356,16 @@ splitIntoQuarters P.Image {..} = undefined
 -- Executed in   15.64 secs    fish           external
 --    usr time   15.58 secs  776.00 micros   15.57 secs
 --    sys time    0.07 secs    0.00 micros    0.07 secs
+
+---------------------------------------------------------------
+-- split wannabe stars into bands
+---------------------------------------------------------------
+
+-- Width: 4095
+-- Height: 2842
+-- 1449
+
+-- ________________________________________________________
+-- Executed in    6.46 secs    fish           external
+--    usr time    6.40 secs    0.07 millis    6.40 secs
+--    sys time    0.08 secs    1.03 millis    0.08 secs
