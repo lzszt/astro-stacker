@@ -25,13 +25,13 @@ library
                     , Stacking
                     , StarMatching
                     , Types
+                    , ImageUtils
     -- other-modules:
     -- other-extensions:
     build-depends:    base
                     , vector
                     , filepath
                     , directory
-                    , polysemy
                     , time
                     , JuicyPixels
                     , async

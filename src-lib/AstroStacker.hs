@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,177 +7,118 @@
 module AstroStacker where
 
 import Codec.Picture qualified as P
+import Codec.Picture.Types qualified as P
 import Config
+import Control.Arrow
+import Control.Concurrent.Async qualified as Async
 import Data.List
 import Data.Maybe
-import Data.Vector.Storable qualified as VS
-import Data.Vector.Storable qualified as Vector
-import Polysemy
-import Polysemy.Reader qualified as Reader
+import ImageUtils
+import Locating
+import Stacking
 import System.Directory
 import System.FilePath
 import Types
 
-getTiff :: Image a -> Tiff
-getTiff = \case
-  Raw _ img -> img
-  Master _ img -> img
-  Clean _ img -> img
-  StarsLocated _ _ img -> img
-  Aligned _ img -> img
-
-getName :: Image a -> String
-getName = \case
-  Raw name _ -> name
-  Master name _ -> name
-  Clean name _ -> name
-  StarsLocated name _ _ -> name
-  Aligned name _ -> name
-
--- denoise :: Image Raw -> Image Clean
--- denoise (Raw name img) =
---   let width = Graphics.rows img
---       height = Graphics.cols img
---       blurSize = min width height `div` 4
---       clean = Graphics.applyFilter (Graphics.gaussianLowPass blurSize 10 Graphics.Edge) img
---    in Clean name $ zipWithImages (-) img clean
-
-loadTiff :: FilePath -> IO (Image Raw)
-loadTiff imagePath = do
+loadImage :: FilePath -> IO Image
+loadImage imagePath = do
   res <- P.readTiff imagePath
   case res of
     Right (P.ImageRGB16 img) ->
       let name = dropExtensions $ takeFileName imagePath
-       in pure $ Raw name img
+       in pure $ Image img name
     Right _ ->
       fail "Incorrect image format"
     Left err -> error err
 
-zipWithImages ::
-  ( Vector.Storable (P.PixelBaseComponent a1),
-    Vector.Storable (P.PixelBaseComponent a2),
-    Vector.Storable (P.PixelBaseComponent a3)
-  ) =>
-  ( P.PixelBaseComponent a1 ->
-    P.PixelBaseComponent a2 ->
-    P.PixelBaseComponent a3
-  ) ->
-  P.Image a1 ->
-  P.Image a2 ->
-  P.Image a3
-zipWithImages f img1 img2 =
-  P.Image
-    { P.imageHeight = P.imageHeight img1,
-      P.imageWidth = P.imageWidth img1,
-      P.imageData = VS.zipWith f (P.imageData img1) (P.imageData img2)
-    }
+saveImage :: FilePath -> Image -> IO ()
+saveImage workingDir Image {..} =
+  P.writeTiff (workingDir </> imageName <.> "tiff") image
 
-generateMaster :: [Image Raw] -> Tiff
-generateMaster is =
-  foldl1' (zipWithImages (+)) $ map (imageMap (`div` nImages) . getTiff) is
+generateMaster :: String -> [Tiff] -> Image
+generateMaster label is =
+  let masterTiff =
+        foldl1' (pixelZipWith addPixels) $
+          map
+            ( P.pixelMap
+                ( \(P.PixelRGB16 r g b) ->
+                    P.PixelRGB16
+                      (r `div` nImages)
+                      (g `div` nImages)
+                      (b `div` nImages)
+                )
+            )
+            is
+   in Image masterTiff (label <> "_master")
   where
+    addPixels (P.PixelRGB16 r1 b1 g1) (P.PixelRGB16 r2 b2 g2) =
+      P.PixelRGB16
+        (r1 + r2)
+        (b1 + b2)
+        (g1 + g2)
     nImages = fromIntegral (length is)
+
+calculateMaster :: FilePath -> String -> [FilePath] -> IO (Maybe Image)
+calculateMaster _ _ [] = pure Nothing
+calculateMaster workingDir label paths = do
+  tiffs <- mapM (fmap (.image) . loadImage) paths
+  let master@Image {..} = generateMaster label tiffs
+  saveImage workingDir master
+  pure $ Just master
+
+subtractMasterDark :: Tiff -> Tiff -> Tiff
+subtractMasterDark masterDark lightTiff =
+  pixelZipWith
+    ( \(P.PixelRGB16 lr lg lb) (P.PixelRGB16 dr dg db) ->
+        P.PixelRGB16
+          (lr - dr)
+          (lg - dg)
+          (lb - db)
+    )
+    lightTiff
+    masterDark
+
+applyMasterDark :: FilePath -> Image -> FilePath -> IO Image
+applyMasterDark workingDir masterDark lightFramePath = do
+  Image {..} <- loadImage lightFramePath
+  let cleanTiff = subtractMasterDark masterDark.image image
+      cleanImage = Image cleanTiff (imageName <> "_clean")
+  saveImage workingDir cleanImage
+  pure cleanImage
+
+locateStars :: FilePath -> Image -> IO (Maybe (Image, [Star]))
+locateStars workingDir lightFrame@Image {..} = do
+  let stars = locateStarsDSS $ P.extractLumaPlane image
+  putStrLn $ "Found " <> show (length stars) <> " stars in " <> show imageName
+  writeFile (workingDir </> imageName <> "_stars.txt") $ show stars
+  pure $ Just (lightFrame, stars)
 
 locateTiffs :: FilePath -> IO [FilePath]
 locateTiffs path =
   map (path <>) . filter (isExtensionOf "tiff") <$> listDirectory path
 
+calculateAlignment :: FilePath -> String -> [Star] -> [Star] -> IO (Maybe Alignment)
+calculateAlignment workingDir imageName _starsRef stars = do
+  if length stars < 3
+    then do
+      putStrLn $ "Cannot compute alignment from " <> show (length stars) <> " stars"
+      pure Nothing
+    else do
+      let alignment = Alignment 0 0 0
+      writeFile (workingDir </> imageName <> "_alignment.txt") $ show alignment
+      pure $ Just alignment
+
+performStacking :: FilePath -> [(Image, Alignment)] -> IO ()
+performStacking workingDir lightFrames = do
+  let lightTiffs = map (first (.image)) lightFrames
+  let stackedTiff = stackImages lightTiffs
+  P.writeTiff (workingDir </> "stacked" <.> "tiff") stackedTiff
+
 newtype WorkingDir = WorkingDir {getWorkingDir :: FilePath}
 
-inWorkingDir :: Members '[Reader.Reader WorkingDir] r => FilePath -> Sem r FilePath
-inWorkingDir path =
-  Reader.asks ((<> "/" <> path) . getWorkingDir)
-
-data MasterKey = MasterKey
-  { masterImages :: [FilePath],
-    masterTiffPath :: FilePath
-  }
-  deriving (Show)
-
-imageMap ::
-  ( Vector.Storable (P.PixelBaseComponent a1),
-    Vector.Storable (P.PixelBaseComponent a2)
-  ) =>
-  (P.PixelBaseComponent a1 -> P.PixelBaseComponent a2) ->
-  P.Image a1 ->
-  P.Image a2
-imageMap f P.Image {..} =
-  P.Image
-    { P.imageWidth = imageWidth,
-      P.imageHeight = imageHeight,
-      P.imageData = VS.map f imageData
-    }
-
--- computeAlignment :: [Star] -> [Star] -> Alignment
--- computeAlignment sts1 sts2 = minimumBy (compare `on` alignmentError) [Alignment offX offY rot | rot <- [-1, -0.9 .. 1], offX <- [-20, -19 .. 20], offY <- [-20, -19 .. 20]]
---   where
---     (matchedSts1, matchedSts2) = matchStars (sts1, sts2)
---     alignmentError :: Alignment -> Int
---     alignmentError alg =
---       sum $
---         zipWith starDistance matchedSts1 $
---           map (starLocationApplyAlignment alg) matchedSts2
-
--- matchStars :: ([Star], [Star]) -> ([Star], [Star])
--- matchStars (x, y) = (sort x, sort y)
-
--- starDistance :: Star -> Star -> Int
--- starDistance (Star x1 y1) (Star x2 y2) =
---   (x1 - x2) ^ 2 + (y1 - y2) ^ 2
-
--- run :: Log.Severity -> [FilePath] -> [FilePath] -> [FilePath] -> FilePath -> IO ()
--- run logSeverity darks biass lights workingDir =
---   runM $
---     Reader.runReader (WorkingDir workingDir) $
---       Time.runTime $
---         Log.runLoggingWithTime (logConfig logSeverity) $
---           runStarsLocatedCache $
---             runMasterCache $ do
---               Log.logInfo $ "Darks: " <> show (length darks)
---               Log.logInfo $ "Biass: " <> show (length biass)
---               Log.logInfo $ "Lights: " <> show (length lights)
---               Log.logInfo $ "Working directory:  " <> workingDir
---               (masterDark, masterBias) <-
---                 embed $
---                   runM
---                     ( Reader.runReader (WorkingDir workingDir) $
---                         Time.runTime $
---                           Log.runLoggingWithTime (logConfig logSeverity) $
---                             withTiming "MasterDark" $
---                               runMasterCache $
---                                 calculateMaster "master_dark.tiff" darks
---                     )
---                     `Async.concurrently` runM
---                       ( Reader.runReader (WorkingDir workingDir) $
---                           Time.runTime $
---                             Log.runLoggingWithTime (logConfig logSeverity) $
---                               withTiming "MasterBias" $
---                                 runMasterCache $
---                                   calculateMaster "master_bias.tiff" biass
---                       )
-
---               cleanImages <-
---                 embed $
---                   Async.mapConcurrently
---                     ( runM
---                         . Time.runTime
---                         . Reader.runReader (WorkingDir workingDir)
---                         . Log.runLoggingWithTime (logConfig logSeverity)
---                         . runCleanCache
---                         . cleanImage masterDark masterBias loadTiff
---                     )
---                     lights
-
---               embed $
---                 Async.mapConcurrently_
---                   ( runM
---                       . Time.runTime
---                       . Reader.runReader (WorkingDir workingDir)
---                       . Log.runLoggingWithTime (logConfig logSeverity)
---                       . runStarsLocatedCache
---                       . locateStars
---                   )
---                   cleanImages
+inWorkingDir :: WorkingDir -> FilePath -> FilePath
+inWorkingDir wd path =
+  wd.getWorkingDir </> path
 
 ---------------------------------------------------------------
 -- Pipeline
@@ -197,11 +137,34 @@ imageMap f P.Image {..} =
 runStacking :: Config -> IO ()
 runStacking conf = do
   putStrLn $ "Working directory: " <> conf.workingDirectory
-  lightFrames <- locateTiffs conf.lightFramesDirectory
-  darkFrames <- fromMaybe [] <$> mapM locateTiffs conf.darkFramesDirectory
-  biasFrames <- fromMaybe [] <$> mapM locateTiffs conf.biasFramesDirectory
-  flatFrames <- fromMaybe [] <$> mapM locateTiffs conf.flatFramesDirectory
-  putStrLn $ "Found " <> show (length lightFrames) <> " light frames"
-  putStrLn $ "Found " <> show (length darkFrames) <> " dark frames"
-  putStrLn $ "Found " <> show (length biasFrames) <> " bias frames"
-  putStrLn $ "Found " <> show (length flatFrames) <> " flat frames"
+  lightFramePaths <- locateTiffs conf.lightFramesDirectory
+  darkFramePaths <- fromMaybe [] <$> mapM locateTiffs conf.darkFramesDirectory
+  biasFramePaths <- fromMaybe [] <$> mapM locateTiffs conf.biasFramesDirectory
+  flatFramePaths <- fromMaybe [] <$> mapM locateTiffs conf.flatFramesDirectory
+  putStrLn $ "Found " <> show (length lightFramePaths) <> " light frames"
+  putStrLn $ "Found " <> show (length darkFramePaths) <> " dark frames"
+  putStrLn $ "Found " <> show (length biasFramePaths) <> " bias frames"
+  putStrLn $ "Found " <> show (length flatFramePaths) <> " flat frames"
+
+  (mMasterDark, masterBias) <-
+    calculateMaster conf.workingDirectory "dark" darkFramePaths
+      `Async.concurrently` calculateMaster conf.workingDirectory "bias" biasFramePaths
+
+  cleanLightFrames <-
+    case mMasterDark of
+      Nothing -> Async.mapConcurrently loadImage lightFramePaths
+      Just masterDark ->
+        Async.mapConcurrently (applyMasterDark conf.workingDirectory masterDark) lightFramePaths
+
+  ((referenceFrame, referenceStars) : restStackableFramesWithStars) <- catMaybes <$> Async.mapConcurrently (locateStars conf.workingDirectory) cleanLightFrames
+
+  alignedFrames <-
+    ((referenceFrame, Alignment 0 0 0) :) . catMaybes
+      <$> Async.mapConcurrently
+        ( \(lightFrame, frameStars) ->
+            fmap (lightFrame,)
+              <$> calculateAlignment conf.workingDirectory lightFrame.imageName referenceStars frameStars
+        )
+        restStackableFramesWithStars
+
+  performStacking conf.workingDirectory alignedFrames

@@ -9,11 +9,6 @@ module Types
     distanceSqr,
     Star (..),
     Image (..),
-    Raw,
-    Master,
-    Clean,
-    StarsLocated,
-    Aligned,
   )
 where
 
@@ -40,9 +35,11 @@ data Position = Position
   }
   deriving (Show, Eq, Ord)
 
+{-# INLINE distance #-}
 distance :: Position -> Position -> Double
 distance p1 p2 = sqrt $ distanceSqr p1 p2
 
+{-# INLINE distanceSqr #-}
 distanceSqr :: Position -> Position -> Double
 distanceSqr p1 p2 =
   fromIntegral $ (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
@@ -53,19 +50,10 @@ data Star = Star
   }
   deriving (Show, Eq, Ord)
 
-data Raw
+data Image = Image
+  { image :: Tiff,
+    imageName :: String
+  }
 
-data Master
-
-data Clean
-
-data StarsLocated
-
-data Aligned
-
-data Image a where
-  Raw :: String -> Tiff -> Image Raw
-  Master :: String -> Tiff -> Image Master
-  Clean :: String -> Tiff -> Image Clean
-  StarsLocated :: String -> [Star] -> Tiff -> Image StarsLocated
-  Aligned :: String -> Tiff -> Image Aligned
+instance Show Image where
+  show i = i.imageName <> " " <> show i.image.imageWidth <> "x" <> show i.image.imageHeight
