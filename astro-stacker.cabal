@@ -15,10 +15,7 @@ extra-doc-files:    CHANGELOG.md
 common options
   ghc-options:       -Wall
                      -threaded
-                     -O2
-                     -flate-specialise
-                     -fplugin=Polysemy.Plugin
-                     -fspecialise-aggressively                    
+                     -O2                 
 
 library
     import:           options
@@ -35,8 +32,6 @@ library
                     , filepath
                     , directory
                     , polysemy
-                    , polysemy-plugin
-                    , polysemy-utils
                     , time
                     , JuicyPixels
                     , async
@@ -53,9 +48,6 @@ executable astro-stacker
     build-depends:
         base
       , astro-stacker
-      , polysemy-plugin
-      , polysemy
-      , polysemy-utils
 
     hs-source-dirs:   app
     default-language: GHC2021
@@ -71,4 +63,3 @@ test-suite astro-stacker-test
     build-depends:
         base
       , astro-stacker
-      , polysemy-plugin

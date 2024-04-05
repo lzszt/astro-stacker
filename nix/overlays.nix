@@ -11,9 +11,6 @@ let
           repa = doJailbreak hsuper.repa;
           type-errors = doJailbreak hsuper.type-errors;
 
-          polysemy-utils =
-            hself.callCabal2nix "polysemy-utils" inputs.polysemy-utilsSrc { };
-
           astro-stacker-src = self.nix-gitignore.gitignoreSource [
             "*.git"
             "dist"
@@ -25,7 +22,6 @@ let
           # We add ourselves to the set of haskellPackages.
           inherit astro-stacker;
           inherit repa type-errors;
-          inherit polysemy-utils;
         };
     };
   };
