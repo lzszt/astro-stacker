@@ -1,16 +1,18 @@
 module Main where
 
-import Data.Maybe
-import Effects.Logging qualified as Log
 -- import StarMatching
 
-import Locating
 import AstroStacker
+import Config
+import Data.Maybe
+import Effects.Logging qualified as Log
+import Locating
 import System.Environment (getArgs)
 
 main :: IO ()
 main = do
-  test
+  config <- parseConfig
+  print config
 
 -- (dark : bias : lights : workingDir : remArgs) <- getArgs
 -- darks <- locateFiles dark

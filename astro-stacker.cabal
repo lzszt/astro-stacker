@@ -23,6 +23,7 @@ common options
 library
     import:           options
     exposed-modules:  AstroStacker
+                    , Config
                     , Locating
                     , Stacking
                     , StarMatching
@@ -40,6 +41,7 @@ library
                     , JuicyPixels
                     , async
                     , containers
+                    , optparse-applicative
     hs-source-dirs:   src-lib
     default-language: GHC2021
 
