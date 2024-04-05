@@ -4,7 +4,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module MyLib where
+module AstroStacker where
 
 import Codec.Picture qualified as P
 import Codec.Picture.Types qualified as P

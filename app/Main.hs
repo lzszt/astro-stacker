@@ -2,8 +2,10 @@ module Main where
 
 import Data.Maybe
 import Effects.Logging qualified as Log
-import StarMatching
-import MyLib
+-- import StarMatching
+
+import Locating
+import AstroStacker
 import System.Environment (getArgs)
 
 main :: IO ()

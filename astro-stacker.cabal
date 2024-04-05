@@ -22,7 +22,7 @@ common options
 
 library
     import:           options
-    exposed-modules:  MyLib
+    exposed-modules:  AstroStacker
                     , Locating
                     , Stacking
                     , StarMatching

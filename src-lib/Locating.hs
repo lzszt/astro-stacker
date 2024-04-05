@@ -6,11 +6,13 @@ module Locating where
 
 import Codec.Picture qualified as P
 import Codec.Picture.Types qualified as P
+import Control.Monad
 import Data.Bits
 import Data.List
 import Data.Map.Strict qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
+import Data.Time
 import Data.Vector qualified as V
 import Data.Vector.Storable qualified as VS
 import Data.Word
@@ -206,9 +208,10 @@ addToStarStructure ws =
               Nothing -> Just $ Set.singleton ws
               Just wss -> Just $ Set.insert ws wss
           )
-   in if minX == maxX
-        then insertAt minX
-        else insertAt minX . insertAt (ws.posX `div` maxStarSize) . insertAt maxX
+   in trace "found star" $
+        if minX == maxX
+          then insertAt minX
+          else insertAt minX . insertAt (ws.posX `div` maxStarSize) . insertAt maxX
 
 locateStarsDSS :: P.Image Word16 -> [Star]
 locateStarsDSS img@P.Image {..} =
@@ -258,28 +261,82 @@ locateStarsDSS img@P.Image {..} =
 wannabeToStar :: WannabeStar -> Star
 wannabeToStar WannabeStar {..} = Star (Position posX posY) meanRadius
 
-circlePixels :: Int -> Int -> Double -> Map.Map Int (Set.Set Int)
-circlePixels x y r =
+circlePixels :: Double -> Map.Map Int (Set.Set Int)
+circlePixels r =
   Map.fromListWith
     Set.union
-    [ (x + round (sin angle * r), Set.singleton $ y + round (cos angle * r))
+    [ (round (sin angle * r), Set.singleton $ round (cos angle * r))
       | angle <- map (\a -> a / 180 * pi) [0, 5 .. 360]
     ]
 
-drawStars :: P.Image Word16 -> [Star] -> P.Image P.PixelRGB16
-drawStars img stars =
-  let centers = map (\s -> (s.starPosition.x, s.starPosition.y)) stars
-      circles = Map.unionsWith Set.union $ map (\s -> circlePixels s.starPosition.x s.starPosition.y s.starRadius) stars
-   in P.pixelMapXY
-        ( \pX pY p ->
-            if (pX, pY) `elem` centers
-              then P.PixelRGB16 0 0 maxBound
-              else
-                if pY `elem` fromMaybe Set.empty (circles Map.!? pX)
-                  then P.PixelRGB16 maxBound 0 0
-                  else P.PixelRGB16 p p p
-        )
-        img
+circlesPxs = map (circlePixels . fromIntegral) [2 .. maxStarSize]
+
+translateCircle x y = Map.mapKeys (+ x) . Map.map (Set.map (+ y))
+
+drawStars :: P.Image Word16 -> [Star] -> IO (P.Image P.PixelRGB16)
+drawStars img@P.Image {..} stars = do
+  let centers = sort $ map (\s -> (s.starPosition.x, s.starPosition.y)) stars
+      circles = Map.unionsWith Set.union $ map (\s -> translateCircle s.starPosition.x s.starPosition.y $ circlesPxs !! round s.starRadius) stars
+  targetImg <- P.newMutableImage imageWidth imageHeight
+  void $
+    P.pixelFoldM
+      ( \(cs, crs) x y p ->
+          case elemRemove (x, y) cs of
+            (True, restCs) -> do
+              P.writePixel targetImg x y (P.PixelRGB16 0 0 maxBound)
+              pure (restCs, crs)
+            (False, restCs) ->
+              case mapElemRemove (x, y) crs of
+                (True, restCrs) -> do
+                  P.writePixel targetImg x y (P.PixelRGB16 maxBound 0 0)
+                  pure (restCs, restCrs)
+                (False, restCrs) -> do
+                  P.writePixel targetImg x y (P.PixelRGB16 p p p)
+                  pure (restCs, restCrs)
+      )
+      (centers, circles)
+      img
+  P.unsafeFreezeImage targetImg
+
+mapElemRemove :: Ord a => Ord b => (a, b) -> Map.Map a (Set.Set b) -> (Bool, Map.Map a (Set.Set b))
+mapElemRemove (x, y) m =
+  case Map.splitLookup x m of
+    (smaller, Nothing, bigger)
+      | Map.null smaller -> (False, bigger)
+      | Map.null bigger -> (False, smaller)
+      | otherwise -> (False, Map.union smaller bigger)
+    (xSmaller, Just ySet, xBigger)
+      | Map.null xSmaller -> case Set.splitMember y ySet of
+          (ySmaller, res, yBigger)
+            | Set.null ySmaller,
+              Set.null yBigger ->
+                (res, xBigger)
+            | Set.null ySmaller -> (res, Map.insert x yBigger xBigger)
+            | Set.null yBigger -> (res, Map.insert x ySmaller xBigger)
+            | otherwise -> (res, Map.insert x (Set.union ySmaller yBigger) xBigger)
+      | Map.null xBigger -> case Set.splitMember y ySet of
+          (ySmaller, res, yBigger)
+            | Set.null ySmaller,
+              Set.null yBigger ->
+                (res, xSmaller)
+            | Set.null ySmaller -> (res, Map.insert x yBigger xSmaller)
+            | Set.null yBigger -> (res, Map.insert x ySmaller xSmaller)
+            | otherwise -> (res, Map.insert x (Set.union ySmaller yBigger) xSmaller)
+      | otherwise ->
+          case Set.splitMember y ySet of
+            (ySmaller, res, yBigger)
+              | Set.null ySmaller,
+                Set.null yBigger ->
+                  (res, Map.union xSmaller xBigger)
+              | Set.null ySmaller -> (res, Map.insert x yBigger $ Map.union xSmaller xBigger)
+              | Set.null yBigger -> (res, Map.insert x ySmaller $ Map.union xSmaller xBigger)
+              | otherwise -> (res, Map.insert x (Set.union ySmaller yBigger) $ Map.union xSmaller xBigger)
+
+elemRemove :: Eq a => a -> [a] -> (Bool, [a])
+elemRemove _ [] = (False, [])
+elemRemove x (y : ys)
+  | x == y = (True, ys)
+  | otherwise = (y :) <$> elemRemove x ys
 
 maxStarSize :: Int
 maxStarSize = 50
@@ -293,8 +350,10 @@ pixel8ToPixel16 =
 
 test :: IO ()
 test = do
-  Right (P.ImageY8 lumaTiff6@P.Image {..}) <- P.readTiff "./resources/tmp/PIA17005_luma.tiff"
-  let lumaTiff = P.pixelMap pixel8ToPixel16 lumaTiff6
+  Right (P.ImageRGB16 tiff@P.Image {..}) <- P.readTiff "./resources/lights/DSC00556.tiff"
+  P.writeTiff "./resources/tmp/DSC00556_luma.tiff" $ P.extractLumaPlane tiff
+  -- Right (P.ImageY8 lumaTiff6@P.Image {..}) <- P.readTiff "./resources/tmp/PIA17005_luma.tiff"
+  let lumaTiff = P.extractLumaPlane tiff
   putStrLn $ "Width: " <> show imageWidth
   putStrLn $ "Height: " <> show imageHeight
 
@@ -302,9 +361,9 @@ test = do
   print $ length alls
 
   let wannabes = sort alls
-  mapM_ print wannabes
+  -- mapM_ print wannabes
 
--- P.writeTiff "./resources/tmp/DSC00540_debug.tiff" $ drawStars lumaTiff wannabes
+  P.writeTiff "./resources/tmp/DSC00556_debug.tiff" =<< drawStars lumaTiff wannabes
 
 splitIntoQuarters :: P.Image a -> (P.Image a, P.Image a, P.Image a, P.Image a)
 splitIntoQuarters P.Image {..} = undefined
