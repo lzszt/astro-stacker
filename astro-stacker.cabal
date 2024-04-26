@@ -15,11 +15,13 @@ extra-doc-files:    CHANGELOG.md
 common options
   ghc-options:       -Wall
                      -threaded
-                     -O2                 
+                     -fspecialise-aggressively
+                     -O2              
 
 library
     import:           options
     exposed-modules:  AstroStacker
+                    , Align
                     , Config
                     , Locating
                     , Stacking
