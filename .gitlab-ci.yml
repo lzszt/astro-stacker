@@ -1,0 +1,6 @@
+build:
+  tags:
+    - nixos
+  before_script:
+    - . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+  script: ./build.sh
