@@ -10,6 +10,8 @@ let
 
           repa = doJailbreak hsuper.repa;
           type-errors = doJailbreak hsuper.type-errors;
+          ghc-prof = doJailbreak hsuper.ghc-prof;
+          profiteur = doJailbreak hsuper.profiteur;
 
           astro-stacker-src = self.nix-gitignore.gitignoreSource [
             "*.git"
@@ -21,8 +23,11 @@ let
         in {
           # We add ourselves to the set of haskellPackages.
           inherit astro-stacker;
-          inherit repa type-errors;
+          inherit repa type-errors ghc-prof profiteur;
         };
     };
   };
-in [ customHaskellPackages ]
+in [
+  (final: prev: { haskellPackages = prev.haskell.packages.ghc98; })
+  customHaskellPackages
+]
