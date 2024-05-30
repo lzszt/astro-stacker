@@ -129,20 +129,6 @@ inWorkingDir :: WorkingDir -> FilePath -> FilePath
 inWorkingDir wd path =
   wd.getWorkingDir </> path
 
----------------------------------------------------------------
--- Pipeline
----------------------------------------------------------------
-
--- lights:
--- - subtract master dark/bias?
--- - locate stars in image
--- - calculate alignment
--- - stack
--- bias:
--- - generate master bias
--- darks:
--- - generate master dark
-
 runStacking :: Config -> IO ()
 runStacking conf = do
   putStrLn $ "Working directory: " <> conf.workingDirectory
