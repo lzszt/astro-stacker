@@ -36,6 +36,10 @@ addVote =
         )
     )
 
+addVotes :: (Foldable t, Ord a, Ord b) => t (a, b) -> M.Map (a, b) Int -> M.Map (a, b) Int
+addVotes votingPairs vm =
+  foldl' (\acc (a, b) -> addVote a b acc) vm votingPairs
+
 maxStarDistanceDelta :: Double
 maxStarDistanceDelta = 4.0
 
@@ -85,20 +89,24 @@ computeLargeTriangleTransformation refStars tgtStars =
                                             then
                                               let refDistanceSqr13 = calcStarDistance refStar1 refStar3
                                                   refDistanceSqr23 = calcStarDistance refStar2 refStar3
-                                               in if abs (refDistanceSqr13 - tgtDistanceSqr13) < maxStarDistanceDelta
-                                                    && abs (refDistanceSqr23 - tgtDistanceSqr23) < maxStarDistanceDelta
-                                                    then
-                                                      addVote refStar1 tgtStar1 $
-                                                        addVote refStar2 tgtStar2 $
-                                                          addVote refStar3 tgtStar3 acc
-                                                    else
-                                                      if abs (refDistanceSqr23 - tgtDistanceSqr13) < maxStarDistanceDelta
-                                                        && abs (refDistanceSqr13 - tgtDistanceSqr23) < maxStarDistanceDelta
-                                                        then
-                                                          addVote refStar1 tgtStar2 $
-                                                            addVote refStar2 tgtStar1 $
-                                                              addVote refStar3 tgtStar3 acc
-                                                        else acc
+                                                  votes =
+                                                    if abs (refDistanceSqr13 - tgtDistanceSqr13) < maxStarDistanceDelta
+                                                      && abs (refDistanceSqr23 - tgtDistanceSqr23) < maxStarDistanceDelta
+                                                      then
+                                                        [ (refStar1, tgtStar1),
+                                                          (refStar2, tgtStar2),
+                                                          (refStar3, tgtStar3)
+                                                        ]
+                                                      else
+                                                        if abs (refDistanceSqr23 - tgtDistanceSqr13) < maxStarDistanceDelta
+                                                          && abs (refDistanceSqr13 - tgtDistanceSqr23) < maxStarDistanceDelta
+                                                          then
+                                                            [ (refStar1, tgtStar2),
+                                                              (refStar2, tgtStar1),
+                                                              (refStar3, tgtStar3)
+                                                            ]
+                                                          else []
+                                               in addVotes votes acc
                                             else acc
                                       )
                                       acc
