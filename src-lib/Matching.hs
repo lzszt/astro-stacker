@@ -43,6 +43,8 @@ addVotes votingPairs vm =
 maxStarDistanceDelta :: Double
 maxStarDistanceDelta = 4.0
 
+{-# SPECIALIZE computeLargeTriangleTransformation :: [RefStar] -> [TargetStar] -> [(RefStar, TargetStar)] #-}
+{-# SPECIALIZE computeLargeTriangleTransformation :: [Star] -> [Star] -> [(Star, Star)] #-}
 computeLargeTriangleTransformation :: (IsStar a, IsStar b, Ord a, Ord b, Show a, Show b) => [a] -> [b] -> [(a, b)]
 computeLargeTriangleTransformation refStars tgtStars =
   let votes = goOverStarDistances M.empty refStarDistances tgtStarDistances
