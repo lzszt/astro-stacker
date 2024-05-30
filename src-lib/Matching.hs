@@ -2,8 +2,10 @@
 
 module Matching where
 
+import Data.Function
 import Data.List
 import Data.Map.Strict qualified as M
+import Data.Maybe
 import Data.Ord
 import Debug.Trace
 import Types
@@ -22,6 +24,7 @@ computeStarDistances = sortOn (Down . snd) . go
 calcStarDistance :: (Located a1, Located a2) => a1 -> a2 -> Double
 calcStarDistance s1 s2 = distanceSqr (position s1) (position s2)
 
+maxRadiusDelta :: Double
 maxRadiusDelta = 2
 
 getStarDist :: (Ord p) => p -> p -> M.Map (Unordered p) b -> Maybe b
@@ -43,7 +46,27 @@ addVotes :: (Foldable t, Ord a, Ord b) => t (a, b) -> M.Map (a, b) Int -> M.Map 
 addVotes votingPairs vm =
   foldl' (\acc (a, b) -> addVote a b acc) vm votingPairs
 
+maxStarDistanceDelta :: Double
 maxStarDistanceDelta = 4
+
+{-# SPECIALIZE areDistancesPotentiallyTheSame :: (Unordered Star, Double) -> (Unordered Star, Double) -> Bool #-}
+{-# SPECIALIZE areDistancesPotentiallyTheSame :: (Unordered RefStar, Double) -> (Unordered TargetStar, Double) -> Bool #-}
+areDistancesPotentiallyTheSame :: (IsStar s1, IsStar s2) => (Unordered s1, Double) -> (Unordered s2, Double) -> Bool
+areDistancesPotentiallyTheSame
+  (Unordered (refStar1, refStar2), refDistanceSqr12)
+  (Unordered (tgtStar1, tgtStar2), tgtDistanceSqr12) =
+    let refRadius1 = starRadius $ toStar refStar1
+        tgtRadius1 = starRadius $ toStar tgtStar1
+        refRadius2 = starRadius $ toStar refStar2
+        tgtRadius2 = starRadius $ toStar tgtStar2
+     in abs (tgtDistanceSqr12 - refDistanceSqr12) <= maxStarDistanceDelta
+          && ( ( abs (refRadius1 - tgtRadius1) <= maxRadiusDelta
+                   && abs (refRadius2 - tgtRadius2) <= maxRadiusDelta
+               )
+                 || ( abs (refRadius2 - tgtRadius1) <= maxRadiusDelta
+                        && abs (refRadius1 - tgtRadius2) <= maxRadiusDelta
+                    )
+             )
 
 {-# SPECIALIZE computeLargeTriangleTransformation :: [RefStar] -> [TargetStar] -> [(RefStar, TargetStar)] #-}
 {-# SPECIALIZE computeLargeTriangleTransformation :: [Star] -> [Star] -> [(Star, Star)] #-}
@@ -60,19 +83,11 @@ computeLargeTriangleTransformation refStars tgtStars =
     goOverStarDistances vm _ [] = sortOn (Down . snd) $ M.toList vm
     goOverStarDistances
       vm
-      rDists@((Unordered (refStar1, refStar2), refDistanceSqr12) : refDists)
-      tDists@((Unordered (tgtStar1, tgtStar2), tgtDistanceSqr12) : tgtDists) =
+      rDists@(ref@(Unordered (refStar1, refStar2), refDistanceSqr12) : refDists)
+      tDists@(tgt@(Unordered (tgtStar1, tgtStar2), tgtDistanceSqr12) : tgtDists) =
         let newVM =
-              if abs (tgtDistanceSqr12 - refDistanceSqr12) <= maxStarDistanceDelta
-                && ( ( abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
-                         && abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
-                     )
-                       || ( abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
-                              && abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
-                          )
-                   )
+              if areDistancesPotentiallyTheSame ref tgt
                 then
-                  -- traceShow (starRadius (toStar refStar1), starRadius (toStar refStar2), starRadius (toStar tgtStar1), starRadius (toStar tgtStar1)) $
                   foldl'
                     ( \acc tgtStar3 ->
                         if tgtStar3 /= tgtStar1 && tgtStar3 /= tgtStar2
@@ -90,7 +105,7 @@ computeLargeTriangleTransformation refStars tgtStars =
                                         ( \refStar3 ->
                                             if refStar3 /= refStar1
                                               && refStar3 /= refStar2
-                                              && abs ((starRadius $ toStar refStar3) - (starRadius $ toStar tgtStar3)) <= maxStarDistanceDelta
+                                              && abs ((starRadius $ toStar refStar3) - (starRadius $ toStar tgtStar3)) <= maxRadiusDelta
                                               then
                                                 let refDistanceSqr13 = calcStarDistance refStar1 refStar3
                                                     refDistanceSqr23 = calcStarDistance refStar2 refStar3
@@ -127,3 +142,4 @@ resolveVotes :: Int -> [((a, b), Int)] -> [(a, b)]
 resolveVotes nTgtStars votes =
   let minNrVotes = maybe 1 (max 1 . snd) $ votes !? (nTgtStars * 2 - 1)
    in map fst $ takeWhile ((>= minNrVotes) . snd) votes
+

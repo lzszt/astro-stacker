@@ -8,6 +8,7 @@ import Data.List
 import Matching
 import System.FilePath
 import Test.Hspec
+import Test.Hspec.Expectations.Pretty qualified as HP
 import Test.Hspec.Golden qualified as G
 import Test.QuickCheck
 import Types
@@ -83,9 +84,12 @@ spec = do
   describe "computeLargeTriangleTransformation" $ do
     refStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars1.txt"
     targetStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars2.txt"
+    -- res <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/golden"
     it "should produce the correct star mapping for the sample inputs" $
       let result = computeLargeTriangleTransformation refStars targetStars
-       in customGoldenPretty "computeLargeTriangleTransformation" formatStars result
+       in --  in result `HP.shouldBe` res
+
+          customGoldenPretty "computeLargeTriangleTransformation" formatStars result
 
 -- describe "addition" $ do
 --   prop "should be comutative" $ \(NonEmpty sts) (Positive offX, Positive offY) ->
