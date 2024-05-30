@@ -10,9 +10,6 @@ import Types
 matchStars :: [RefStar] -> [TargetStar] -> [(RefStar, TargetStar)]
 matchStars = undefined
 
-initVotingMap :: (Ord a, Ord b) => [a] -> [b] -> M.Map (a, b) Int
-initVotingMap refStars tgtStars = M.fromList [((r, t), 0) | r <- refStars, t <- tgtStars]
-
 computeStarDistances :: (Located a, Ord a) => [a] -> [(Unordered a, Double)]
 computeStarDistances = sortOn (Down . snd) . go
   where
@@ -30,26 +27,22 @@ getStarDist s1 s2 dists =
    in M.lookup key dists
 
 addVote :: (Ord a, Ord b) => a -> b -> M.Map (a, b) Int -> M.Map (a, b) Int
-addVote s1 s2 =
-  -- trace ("vote: " <> show s1 <> "," <> show s2) $
-  M.alter
-    ( \case
-        Nothing -> Just 1
-        Just n -> Just $ n + 1
+addVote =
+  curry
+    ( M.alter
+        ( \case
+            Nothing -> Just 1
+            Just n -> Just $ n + 1
+        )
     )
-    (s1, s2)
 
 maxStarDistanceDelta :: Double
 maxStarDistanceDelta = 4.0
 
-computeLargeTriangleTransformation :: (IsStar a, IsStar b, Ord a, Ord b, Show a, Show b) => [a] -> [b] -> Maybe [(a, b)]
+computeLargeTriangleTransformation :: (IsStar a, IsStar b, Ord a, Ord b, Show a, Show b) => [a] -> [b] -> [(a, b)]
 computeLargeTriangleTransformation refStars tgtStars =
-  let votes = goOverStarDistances (initVotingMap refStars tgtStars) refStarDistances tgtStarDistances
-   in if length votes >= length tgtStars
-        then
-          let remainingVotes = resolveVotes (length tgtStars) votes
-           in Just remainingVotes -- computeSigmaClippingTransformation remainingVotes ttType
-        else Nothing
+  let votes = goOverStarDistances M.empty refStarDistances tgtStarDistances
+   in resolveVotes (length tgtStars) votes
   where
     refStarDistances = computeStarDistances refStars
     tgtStarDistances = computeStarDistances tgtStars
@@ -122,5 +115,5 @@ computeLargeTriangleTransformation refStars tgtStars =
 
 resolveVotes :: Int -> [((a, b), Int)] -> [(a, b)]
 resolveVotes nTgtStars votes =
-  let minNrVotes = max 1 $ snd $ votes !! (nTgtStars * 2 - 1)
+  let minNrVotes = maybe 1 (max 1 . snd) $ votes !? (nTgtStars * 2 - 1)
    in map fst $ takeWhile ((>= minNrVotes) . snd) votes

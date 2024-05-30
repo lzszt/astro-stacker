@@ -263,7 +263,7 @@ solve ref tgt =
 testFoo = do
   refStars <- map RefStar . read <$> readFile "./resources/tmp/img_1_stars.txt"
   targetStars <- map TargetStar . read <$> readFile "./resources/tmp/img_2_stars.txt"
-  let Just r = computeLargeTriangleTransformation refStars targetStars
+  let r = computeLargeTriangleTransformation refStars targetStars
   print $ length r
   let uniques = M.toList $ M.fromListWith const r
   print $ length uniques

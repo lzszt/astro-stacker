@@ -107,7 +107,7 @@ calculateAlignment workingDir imageName refStars targetStars = do
       putStrLn $ "Cannot compute alignment from fewer than 3 stars"
       pure Nothing
     else do
-      let Just res = computeLargeTriangleTransformation refStars targetStars
+      let res = computeLargeTriangleTransformation refStars targetStars
       print $ length res
       let uniques = M.toList $ M.fromListWith const res
       print $ length uniques

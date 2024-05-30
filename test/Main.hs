@@ -84,7 +84,7 @@ spec = do
     refStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars1.txt"
     targetStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars2.txt"
     it "should produce the correct star mapping for the sample inputs" $
-      let Just result = computeLargeTriangleTransformation refStars targetStars
+      let result = computeLargeTriangleTransformation refStars targetStars
        in customGoldenPretty "computeLargeTriangleTransformation" formatStars result
 
 -- describe "addition" $ do
@@ -116,8 +116,7 @@ foo =
       tgtStars = stars
       expected = sort $ zip refStars tgtStars
    in case computeLargeTriangleTransformation refStars tgtStars of
-        Just actual -> sort actual `shouldStartWith` expected
-        Nothing -> expectationFailure "No matching stars found"
+        actual -> sort actual `shouldStartWith` expected
 
 bar :: Expectation
 bar =
