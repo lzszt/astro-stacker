@@ -62,11 +62,7 @@ data Star = Star
   { starPosition :: Position,
     starRadius :: Double
   }
-  -- deriving (Show, Read, Eq, Ord)
-  deriving (Read, Eq, Ord)
-
-instance Show Star where
-  show (Star (Position x y) r) = "(" <> show x <> "," <> show y <> ")*" <> show r
+  deriving (Show, Read, Eq, Ord)
 
 instance Located Star where
   position = starPosition

@@ -70,4 +70,6 @@ test-suite astro-stacker-test
         base
       , astro-stacker
       , hspec 
+      , hspec-golden
       , QuickCheck
+      , filepath

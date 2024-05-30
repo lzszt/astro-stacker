@@ -3,12 +3,12 @@
 
 module Main (main) where
 
-import Align
 import Data.Function
 import Data.List
 import Matching
+import System.FilePath
 import Test.Hspec
-import Test.Hspec.QuickCheck
+import Test.Hspec.Golden qualified as G
 import Test.QuickCheck
 import Types
 
@@ -53,12 +53,39 @@ applyOffset (offX, offY) s = s {starPosition = translate s.starPosition}
   where
     translate (Position x y) = Position (x + offX) (y + offY)
 
+customGoldenPretty :: (Show str, Read str) => FilePath -> (str -> String) -> str -> G.Golden str
+customGoldenPretty name fmt content =
+  G.Golden
+    { G.output = content,
+      G.encodePretty = fmt,
+      G.writeToFile = (\path -> writeFile path . show),
+      G.readFromFile = (fmap read . readFile),
+      G.goldenFile = "test" </> ".golden" </> name </> "golden",
+      G.actualFile = Just ("test" </> ".golden" </> name </> "actual"),
+      G.failFirstTime = True
+    }
+
+customGolden :: FilePath -> String -> G.Golden String
+customGolden name = customGoldenPretty name show
+
+formatStar :: Star -> String
+formatStar (Star (Position x y) r) = "(" <> show x <> "," <> show y <> ")*" <> show r
+
+formatStars :: [(Star, Star)] -> String
+formatStars = unwords . map (\(ref, tgt) -> "(" <> formatStar ref <> "," <> formatStar tgt <> ")")
+
 spec :: Spec
 spec = do
   describe "foo" $
     it "bar" foo
   describe "resolveVotes" $
     it "should never return multiple entries for the same element" bar
+  describe "computeLargeTriangleTransformation" $ do
+    refStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars1.txt"
+    targetStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars2.txt"
+    it "should produce the correct star mapping for the sample inputs" $
+      let Just result = computeLargeTriangleTransformation refStars targetStars
+       in customGoldenPretty "computeLargeTriangleTransformation" formatStars result
 
 -- describe "addition" $ do
 --   prop "should be comutative" $ \(NonEmpty sts) (Positive offX, Positive offY) ->
