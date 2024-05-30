@@ -17,45 +17,6 @@ import Debug.Trace
 import Numeric.LinearAlgebra qualified as LA
 import Types
 
-computeAlignment :: AlignmentMode -> [(Position, Position)] -> Alignment
-computeAlignment alignmentMode starPairs =
-  case alignmentMode of
-    NoAlignment -> Alignment 0 0 0
-    TranslationOnly -> computeTranslation starPairs
-    TranslateAndRotate -> error "implement TranslateAndRotate"
-
-computeTranslation :: [(Position, Position)] -> Alignment
-computeTranslation [] = error "Cannot compute translation without star pairs"
-computeTranslation stars =
-  let (xMinRef, xMaxRef) = minMax $ map (x . fst) stars
-      (yMinRef, yMaxRef) = minMax $ map (y . fst) stars
-      (xMinTar, xMaxTar) = minMax $ map (x . snd) stars
-      (yMinTar, yMaxTar) = minMax $ map (y . snd) stars
-      xMinDiff = xMinRef - xMaxTar
-      xMaxDiff = xMaxRef - xMinTar
-      yMinDiff = yMinRef - yMaxTar
-      yMaxDiff = yMaxRef - yMinTar
-      potentialAlignments =
-        [ let alignment = Alignment dX dY 0
-           in (alignment, alignmentScore alignment)
-          | dX <- [xMinDiff .. xMaxDiff],
-            dY <- [yMinDiff .. yMaxDiff]
-        ]
-
-      alignmentScore alg = sum $ map (uncurry distanceSqr . second (applyAlignment alg)) stars
-   in fst $ minimumBy (compare `on` snd) potentialAlignments
-
-minMax :: (Ord a) => [a] -> (a, a)
-minMax [] = error "Cannot get min/max from empty list"
-minMax (x : xs) =
-  go (x, x) xs
-  where
-    go acc [] = acc
-    go acc@(cMin, cMax) (y : ys)
-      | y < cMin = go (y, cMax) ys
-      | y <= cMax = go acc ys
-      | otherwise = go (cMin, y) ys
-
 data TransformationType
   = TT_LINEAR -- 0,
   | TT_BILINEAR -- 1,

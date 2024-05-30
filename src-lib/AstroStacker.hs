@@ -7,7 +7,6 @@
 module AstroStacker where
 
 import Align
-import Align (computeAlignment)
 import Codec.Picture qualified as P
 import Codec.Picture.Types qualified as P
 import Config
@@ -111,9 +110,7 @@ calculateAlignment workingDir imageName refStars targetStars = do
       print $ length res
       let uniques = M.toList $ M.fromListWith const res
       print $ length uniques
-      let alignment = computeAlignment TranslationOnly $ map (bimap position position) uniques
-      print alignment
-      let alignment = computeAlignment TranslationOnly []
+      let alignment = Alignment 0 0 0
       writeFile (workingDir </> imageName <> "_alignment.txt") $ show alignment
       pure $ Just alignment
 
