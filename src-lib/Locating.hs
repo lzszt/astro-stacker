@@ -408,12 +408,6 @@ test = do
 
   P.writeTiff "./resources/tmp/PIA17005_luma_debug.tiff" =<< drawStars lumaTiff wannabes
 
-splitIntoQuarters :: P.Image a -> (P.Image a, P.Image a, P.Image a, P.Image a)
-splitIntoQuarters P.Image {..} = undefined
-  where
-    targetWidth = imageWidth `div` 2
-    targetHeight = imageHeight `div` 2
-
 ---------------------------------------------------------------
 -- Workflow locating stars (DSS)
 ---------------------------------------------------------------
