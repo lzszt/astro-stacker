@@ -6,6 +6,7 @@ module Main (main) where
 import Align
 import Data.Function
 import Data.List
+import Matching
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
