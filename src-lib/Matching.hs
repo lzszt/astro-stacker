@@ -5,6 +5,7 @@ module Matching where
 import Data.List
 import Data.Map.Strict qualified as M
 import Data.Ord
+import Debug.Trace
 import Types
 
 matchStars :: [RefStar] -> [TargetStar] -> [(RefStar, TargetStar)]
@@ -63,14 +64,15 @@ computeLargeTriangleTransformation refStars tgtStars =
       tDists@((Unordered (tgtStar1, tgtStar2), tgtDistanceSqr12) : tgtDists) =
         let newVM =
               if abs (tgtDistanceSqr12 - refDistanceSqr12) <= maxStarDistanceDelta
-                -- && ( ( abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
-                --          && abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
-                --      )
-                --        || ( abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
-                --               && abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
-                --           )
-                --    )
+                && ( ( abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
+                         && abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
+                     )
+                       || ( abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
+                              && abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
+                          )
+                   )
                 then
+                  -- traceShow (starRadius (toStar refStar1), starRadius (toStar refStar2), starRadius (toStar tgtStar1), starRadius (toStar tgtStar1)) $
                   foldl'
                     ( \acc tgtStar3 ->
                         if tgtStar3 /= tgtStar1 && tgtStar3 /= tgtStar2
@@ -88,7 +90,7 @@ computeLargeTriangleTransformation refStars tgtStars =
                                         ( \refStar3 ->
                                             if refStar3 /= refStar1
                                               && refStar3 /= refStar2
-                                              -- && abs ((starRadius $ toStar refStar3) - (starRadius $ toStar tgtStar3)) <= maxStarDistanceDelta
+                                              && abs ((starRadius $ toStar refStar3) - (starRadius $ toStar tgtStar3)) <= maxStarDistanceDelta
                                               then
                                                 let refDistanceSqr13 = calcStarDistance refStar1 refStar3
                                                     refDistanceSqr23 = calcStarDistance refStar2 refStar3
