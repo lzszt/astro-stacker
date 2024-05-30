@@ -10,6 +10,7 @@ import Data.Bifunctor
 import Data.Map.Strict qualified as M
 import Data.Maybe
 import Locating
+import Matching
 import Types
 
 main :: IO ()

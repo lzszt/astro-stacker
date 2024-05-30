@@ -16,6 +16,8 @@ computeStarDistances = sortOn (Down . snd) . go
     go [] = []
     go (s : stars) = map (\st -> (mkUnordered s st, calcStarDistance s st)) stars <> go stars
 
+{-# SPECIALIZE calcStarDistance :: RefStar -> TargetStar -> Double #-}
+{-# SPECIALIZE calcStarDistance :: Star -> Star -> Double #-}
 calcStarDistance :: (Located a1, Located a2) => a1 -> a2 -> Double
 calcStarDistance s1 s2 = distanceSqr (position s1) (position s2)
 
@@ -40,8 +42,7 @@ addVotes :: (Foldable t, Ord a, Ord b) => t (a, b) -> M.Map (a, b) Int -> M.Map 
 addVotes votingPairs vm =
   foldl' (\acc (a, b) -> addVote a b acc) vm votingPairs
 
-maxStarDistanceDelta :: Double
-maxStarDistanceDelta = 4.0
+maxStarDistanceDelta = 4
 
 {-# SPECIALIZE computeLargeTriangleTransformation :: [RefStar] -> [TargetStar] -> [(RefStar, TargetStar)] #-}
 {-# SPECIALIZE computeLargeTriangleTransformation :: [Star] -> [Star] -> [(Star, Star)] #-}
@@ -82,17 +83,16 @@ computeLargeTriangleTransformation refStars tgtStars =
                                 -- 0.9^2 avoids many useless triangles with two big sides and one small side
                                 if fRatio < 0.81
                                   then
-                                    -- FIXME (felix): this should be doable in parallel and the votes merged
-                                    foldl'
-                                      ( \acc refStar3 ->
-                                          if refStar3 /= refStar1
-                                            && refStar3 /= refStar2
-                                            -- && abs ((starRadius $ toStar refStar3) - (starRadius $ toStar tgtStar3)) <= maxStarDistanceDelta
-                                            then
-                                              let refDistanceSqr13 = calcStarDistance refStar1 refStar3
-                                                  refDistanceSqr23 = calcStarDistance refStar2 refStar3
-                                                  votes =
-                                                    if abs (refDistanceSqr13 - tgtDistanceSqr13) < maxStarDistanceDelta
+                                    flip addVotes acc $
+                                      concatMap
+                                        ( \refStar3 ->
+                                            if refStar3 /= refStar1
+                                              && refStar3 /= refStar2
+                                              -- && abs ((starRadius $ toStar refStar3) - (starRadius $ toStar tgtStar3)) <= maxStarDistanceDelta
+                                              then
+                                                let refDistanceSqr13 = calcStarDistance refStar1 refStar3
+                                                    refDistanceSqr23 = calcStarDistance refStar2 refStar3
+                                                 in if abs (refDistanceSqr13 - tgtDistanceSqr13) < maxStarDistanceDelta
                                                       && abs (refDistanceSqr23 - tgtDistanceSqr23) < maxStarDistanceDelta
                                                       then
                                                         [ (refStar1, tgtStar1),
@@ -108,11 +108,9 @@ computeLargeTriangleTransformation refStars tgtStars =
                                                               (refStar3, tgtStar3)
                                                             ]
                                                           else []
-                                               in addVotes votes acc
-                                            else acc
-                                      )
-                                      acc
-                                      refStars
+                                              else []
+                                        )
+                                        refStars
                                   else acc
                           else acc
                     )
