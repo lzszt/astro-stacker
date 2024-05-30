@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 
 module Locating where
 
@@ -12,18 +13,17 @@ import Data.List
 import Data.Map.Strict qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
-import Data.Time
-import Data.Vector qualified as V
 import Data.Vector.Storable qualified as VS
 import Data.Word
 import Debug.Trace
+import System.Random
 import Types
 
 flattenImage ::
   forall a.
-  Bounded a =>
-  Integral a =>
-  P.Pixel a =>
+  (Bounded a) =>
+  (Integral a) =>
+  (P.Pixel a) =>
   P.Image a ->
   P.Image a
 flattenImage img@P.Image {..} =
@@ -105,7 +105,7 @@ mkPixelDirection dX dY =
       dirY = dY
     }
 
-safePixelAt :: P.Pixel a => P.Image a -> Int -> Int -> Maybe a
+safePixelAt :: (P.Pixel a) => P.Image a -> Int -> Int -> Maybe a
 safePixelAt img@P.Image {..} x y
   | x >= 0,
     x < imageWidth,
@@ -114,7 +114,7 @@ safePixelAt img@P.Image {..} x y
       Just $ P.pixelAt img x y
   | otherwise = Nothing
 
-pixelAtDefault :: P.Pixel a => a -> P.Image a -> Int -> Int -> a
+pixelAtDefault :: (P.Pixel a) => a -> P.Image a -> Int -> Int -> a
 pixelAtDefault def img x y = fromMaybe def $ safePixelAt img x y
 
 concentricCircles ::
@@ -208,10 +208,9 @@ addToStarStructure ws =
               Nothing -> Just $ Set.singleton ws
               Just wss -> Just $ Set.insert ws wss
           )
-   in trace "found star" $
-        if minX == maxX
-          then insertAt minX
-          else insertAt minX . insertAt (ws.posX `div` maxStarSize) . insertAt maxX
+   in if minX == maxX
+        then insertAt minX
+        else insertAt minX . insertAt (ws.posX `div` maxStarSize) . insertAt maxX
 
 locateStarsDSS :: P.Image Word16 -> [Star]
 locateStarsDSS img@P.Image {..} =
@@ -298,7 +297,7 @@ drawStars img@P.Image {..} stars = do
       img
   P.unsafeFreezeImage targetImg
 
-mapElemRemove :: Ord a => Ord b => (a, b) -> Map.Map a (Set.Set b) -> (Bool, Map.Map a (Set.Set b))
+mapElemRemove :: (Ord a) => (Ord b) => (a, b) -> Map.Map a (Set.Set b) -> (Bool, Map.Map a (Set.Set b))
 mapElemRemove (x, y) m =
   case Map.splitLookup x m of
     (smaller, Nothing, bigger)
@@ -332,7 +331,7 @@ mapElemRemove (x, y) m =
               | Set.null yBigger -> (res, Map.insert x ySmaller $ Map.union xSmaller xBigger)
               | otherwise -> (res, Map.insert x (Set.union ySmaller yBigger) $ Map.union xSmaller xBigger)
 
-elemRemove :: Eq a => a -> [a] -> (Bool, [a])
+elemRemove :: (Eq a) => a -> [a] -> (Bool, [a])
 elemRemove _ [] = (False, [])
 elemRemove x (y : ys)
   | x == y = (True, ys)
@@ -348,12 +347,56 @@ pixel8ToPixel16 =
     . (/ fromIntegral @Word8 @Double maxBound)
     . fromIntegral
 
+generateTransform :: IO Alignment
+generateTransform = do
+  offX <- randomRIO (-10, 10)
+  offY <- randomRIO (-10, 10)
+  rot <- randomRIO (-0.1, 0.1)
+  pure $ Alignment offX offY rot
+
+generateTransforms :: [t] -> IO [(t, Alignment)]
+generateTransforms = mapM (\img -> (img,) <$> generateTransform)
+
+applyTransform :: Alignment -> Tiff -> Tiff
+applyTransform alg img =
+  P.generateImage generatePixel img.imageWidth img.imageHeight
+  where
+    generatePixel x' y' =
+      let Position {..} = applyAlignment alg $ Position x' y'
+       in if 0 <= x
+            && x < img.imageWidth
+            && 0 <= y
+            && y < img.imageHeight
+            then P.pixelAt img x y
+            else P.PixelRGB16 0 0 0
+
+generateTestTiffs :: IO ()
+generateTestTiffs = do
+  let n = 100
+  Right (P.ImageRGB8 original) <- P.readTiff "./PIA17005.tiff"
+
+  withTransforms <- generateTransforms [1 .. n]
+  mapM_ (print . snd) withTransforms
+
+  mapM_
+    ( \(i, transform) ->
+        P.writeTiff ("./resources/test_lights/img_" <> show i <> ".tiff") $
+          applyTransform transform $
+            P.pixelMap
+              ( \(P.PixelRGB8 r g b) ->
+                  P.PixelRGB16
+                    (pixel8ToPixel16 r)
+                    (pixel8ToPixel16 g)
+                    (pixel8ToPixel16 b)
+              )
+              original
+    )
+    withTransforms
+
 test :: IO ()
 test = do
-  Right (P.ImageRGB16 tiff@P.Image {..}) <- P.readTiff "./resources/lights/DSC00556.tiff"
-  P.writeTiff "./resources/tmp/DSC00556_luma.tiff" $ P.extractLumaPlane tiff
-  -- Right (P.ImageY8 lumaTiff6@P.Image {..}) <- P.readTiff "./resources/tmp/PIA17005_luma.tiff"
-  let lumaTiff = P.extractLumaPlane tiff
+  Right (P.ImageY8 lumaTiff8@P.Image {..}) <- P.readTiff "./resources/tmp/PIA17005_luma.tiff"
+  let lumaTiff = P.pixelMap pixel8ToPixel16 lumaTiff8
   putStrLn $ "Width: " <> show imageWidth
   putStrLn $ "Height: " <> show imageHeight
 
@@ -363,7 +406,7 @@ test = do
   let wannabes = sort alls
   -- mapM_ print wannabes
 
-  P.writeTiff "./resources/tmp/DSC00556_debug.tiff" =<< drawStars lumaTiff wannabes
+  P.writeTiff "./resources/tmp/PIA17005_luma_debug.tiff" =<< drawStars lumaTiff wannabes
 
 splitIntoQuarters :: P.Image a -> (P.Image a, P.Image a, P.Image a, P.Image a)
 splitIntoQuarters P.Image {..} = undefined
@@ -378,7 +421,7 @@ splitIntoQuarters P.Image {..} = undefined
 -- calculate maximum intensity of all pixels
 -- calculate the fiftyth percentile of all intensities
 -- background is ratio of fifty percentile intensity to maxBound
--- intensity threshold is minLuninancy + background where minLuminancy is a config parameter tipically set to 10?
+-- intensity threshold is minLuninancy + background where minLuminancy is a config parameter typically set to 10?
 -- for deltaRadius <- [0..4]
 -- iterate over image
 --    get pixel intensity
@@ -389,7 +432,7 @@ splitIntoQuarters P.Image {..} = undefined
 ---------------------------------------------------------------
 
 ---------------------------------------------------------------
--- Start
+-- GHC 9.6.4
 ---------------------------------------------------------------
 
 -- Width: 4095
@@ -397,25 +440,12 @@ splitIntoQuarters P.Image {..} = undefined
 -- 1449
 
 -- ________________________________________________________
--- Executed in   29.21 secs    fish           external
---    usr time   29.08 secs    1.32 millis   29.08 secs
---    sys time    0.10 secs    0.24 millis    0.10 secs
+-- Executed in  103.53 secs    fish           external
+--    usr time  106.75 secs    1.16 millis  106.75 secs
+--    sys time   23.52 secs    0.10 millis   23.52 secs
 
 ---------------------------------------------------------------
--- filter stars around current position
----------------------------------------------------------------
-
--- Width: 4095
--- Height: 2842
--- 1449
-
--- ________________________________________________________
--- Executed in   15.64 secs    fish           external
---    usr time   15.58 secs  776.00 micros   15.57 secs
---    sys time    0.07 secs    0.00 micros    0.07 secs
-
----------------------------------------------------------------
--- split wannabe stars into bands
+-- GHC 9.6.4 + -fspecialise-aggressively
 ---------------------------------------------------------------
 
 -- Width: 4095
@@ -423,6 +453,19 @@ splitIntoQuarters P.Image {..} = undefined
 -- 1449
 
 -- ________________________________________________________
--- Executed in    6.46 secs    fish           external
---    usr time    6.40 secs    0.07 millis    6.40 secs
---    sys time    0.08 secs    1.03 millis    0.08 secs
+-- Executed in  102.54 secs    fish           external
+--    usr time  105.87 secs    1.27 millis  105.87 secs
+--    sys time   22.77 secs    0.15 millis   22.77 secs
+
+---------------------------------------------------------------
+-- GHC 9.8.2 + -fspecialise-aggressively
+---------------------------------------------------------------
+
+-- Width: 4095
+-- Height: 2842
+-- 1449
+
+-- ________________________________________________________
+-- Executed in  117.51 secs    fish           external
+--    usr time  115.17 secs  496.00 micros  115.17 secs
+--    sys time   25.45 secs  738.00 micros   25.45 secs

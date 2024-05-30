@@ -7,6 +7,13 @@ import Control.Monad.ST
 import Data.Vector.Storable qualified as VS
 import Data.Vector.Storable.Mutable qualified as MV
 
+{-# SPECIALIZE INLINE pixelZipWith :: (P.PixelYCbCr8 -> P.PixelRGB8 -> P.PixelRGB8) -> P.Image P.PixelYCbCr8 -> P.Image P.PixelRGB8 -> P.Image P.PixelRGB8 #-}
+{-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGB8 -> P.PixelYCbCr8 -> P.PixelYCbCr8) -> P.Image P.PixelRGB8 -> P.Image P.PixelYCbCr8 -> P.Image P.PixelYCbCr8 #-}
+{-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGB8 -> P.PixelRGB8 -> P.PixelRGB8) -> P.Image P.PixelRGB8 -> P.Image P.PixelRGB8 -> P.Image P.PixelRGB8 #-}
+{-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGB8 -> P.PixelRGBA8 -> P.PixelRGBA8) -> P.Image P.PixelRGB8 -> P.Image P.PixelRGBA8 -> P.Image P.PixelRGBA8 #-}
+{-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGBA8 -> P.PixelRGBA8 -> P.PixelRGBA8) -> P.Image P.PixelRGBA8 -> P.Image P.PixelRGBA8 -> P.Image P.PixelRGBA8 #-}
+{-# SPECIALIZE INLINE pixelZipWith :: (P.Pixel8 -> P.PixelRGB8 -> P.PixelRGB8) -> P.Image P.Pixel8 -> P.Image P.PixelRGB8 -> P.Image P.PixelRGB8 #-}
+{-# SPECIALIZE INLINE pixelZipWith :: (P.Pixel8 -> P.Pixel8 -> P.Pixel8) -> P.Image P.Pixel8 -> P.Image P.Pixel8 -> P.Image P.Pixel8 #-}
 pixelZipWith ::
   forall a b c.
   (P.Pixel a, P.Pixel b, P.Pixel c) =>
@@ -14,13 +21,6 @@ pixelZipWith ::
   P.Image a ->
   P.Image b ->
   P.Image c
--- {-# SPECIALIZE INLINE pixelZipWith :: (P.PixelYCbCr8 -> P.PixelRGB8) -> P.Image P.PixelYCbCr8 -> P.Image P.PixelRGB8 #-}
--- {-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGB8 -> P.PixelYCbCr8) -> P.Image P.PixelRGB8 -> P.Image P.PixelYCbCr8 #-}
--- {-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGB8 -> P.PixelRGB8) -> P.Image P.PixelRGB8 -> P.Image P.PixelRGB8 #-}
--- {-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGB8 -> P.PixelRGBA8) -> P.Image P.PixelRGB8 -> P.Image P.PixelRGBA8 #-}
--- {-# SPECIALIZE INLINE pixelZipWith :: (P.PixelRGBA8 -> P.PixelRGBA8) -> P.Image P.PixelRGBA8 -> P.Image P.PixelRGBA8 #-}
--- {-# SPECIALIZE INLINE pixelZipWith :: (P.Pixel8 -> P.PixelRGB8) -> P.Image P.Pixel8 -> P.Image P.PixelRGB8 #-}
--- {-# SPECIALIZE INLINE pixelZipWith :: (P.Pixel8 -> P.Pixel8) -> P.Image P.Pixel8 -> P.Image P.Pixel8 #-}
 pixelZipWith f P.Image {imageWidth = w, imageHeight = h, imageData = vec1} P.Image {imageData = vec2} =
   P.Image w h pixels
   where
@@ -43,7 +43,6 @@ pixelZipWith f P.Image {imageWidth = w, imageHeight = h, imageData = vec1} P.Ima
                       (writeIdx + destComponentCount)
                       (x + 1)
       lineMapper 0 0 0 0
-
       -- unsafeFreeze avoids making a second copy and it will be
       -- safe because newArray can't be referenced as a mutable array
       -- outside of this where block

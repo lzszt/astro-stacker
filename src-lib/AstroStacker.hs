@@ -6,12 +6,15 @@
 
 module AstroStacker where
 
+import Align
+import Align (computeAlignment)
 import Codec.Picture qualified as P
 import Codec.Picture.Types qualified as P
 import Config
-import Control.Arrow
 import Control.Concurrent.Async qualified as Async
+import Data.Bifunctor
 import Data.List
+import Data.Map.Strict qualified as M
 import Data.Maybe
 import ImageUtils
 import Locating
@@ -98,13 +101,19 @@ locateTiffs path =
   map (path <>) . filter (isExtensionOf "tiff") <$> listDirectory path
 
 calculateAlignment :: FilePath -> String -> [Star] -> [Star] -> IO (Maybe Alignment)
-calculateAlignment workingDir imageName _starsRef stars = do
-  if length stars < 3
+calculateAlignment workingDir imageName refStars targetStars = do
+  if length refStars < 3 || length targetStars < 3
     then do
-      putStrLn $ "Cannot compute alignment from " <> show (length stars) <> " stars"
+      putStrLn $ "Cannot compute alignment from fewer than 3 stars"
       pure Nothing
     else do
-      let alignment = Alignment 0 0 0
+      let Just res = computeLargeTriangleTransformation refStars targetStars
+      print $ length res
+      let uniques = M.toList $ M.fromListWith const res
+      print $ length uniques
+      let alignment = computeAlignment TranslationOnly $ map (bimap position position) uniques
+      print alignment
+      let alignment = computeAlignment TranslationOnly []
       writeFile (workingDir </> imageName <> "_alignment.txt") $ show alignment
       pure $ Just alignment
 
@@ -146,9 +155,8 @@ runStacking conf = do
   putStrLn $ "Found " <> show (length biasFramePaths) <> " bias frames"
   putStrLn $ "Found " <> show (length flatFramePaths) <> " flat frames"
 
-  (mMasterDark, masterBias) <-
-    calculateMaster conf.workingDirectory "dark" darkFramePaths
-      `Async.concurrently` calculateMaster conf.workingDirectory "bias" biasFramePaths
+  [mMasterDark, _mMasterBias, _mMasterFlat] <-
+    Async.mapConcurrently (uncurry (calculateMaster conf.workingDirectory)) [("dark", darkFramePaths), ("bias", biasFramePaths), ("flat", flatFramePaths)]
 
   cleanLightFrames <-
     case mMasterDark of

@@ -6,23 +6,8 @@ module StarMatching where
 import Codec.Picture qualified as P
 import Data.List
 import Data.Map.Strict qualified as Map
-import Data.Ord
 import Locating
 import Types
-
-newtype Unordered a = Unordered {getUnordered :: (a, a)}
-  deriving (Show)
-
-mkUnordered :: Ord a => a -> a -> Unordered a
-mkUnordered x y
-  | x <= y = Unordered (x, y)
-  | otherwise = Unordered (y, x)
-
-instance Eq a => Eq (Unordered a) where
-  Unordered p1 == Unordered p2 = p1 == p2
-
-instance Ord a => Ord (Unordered a) where
-  compare (Unordered p1) (Unordered p2) = compare p1 p2
 
 computeStarDistances :: [Star] -> (Map.Map (Unordered Star) Double, Double)
 computeStarDistances stars =
@@ -33,24 +18,24 @@ computeStarDistances stars =
     (Map.empty, 0)
     [(mkUnordered s1 s2, distance s1.starPosition s2.starPosition) | s1 <- stars, s2 <- stars]
 
-computeMatching :: [Star] -> [Star] -> [(Int, Int)]
+computeMatching :: [Star] -> [Star] -> [(Star, Star)]
 computeMatching stars1 stars2 =
-  let indexedStars1 = sortOn ((.starRadius) . snd) $ zip [0 ..] stars1
-      indexedStars2 = sortOn ((.starRadius) . snd) $ zip [0 ..] stars2
-   in go indexedStars1 indexedStars2
+  let sortedStars1 = sortOn (.starRadius) stars1
+      sortedStars2 = sortOn (.starRadius) stars2
+   in go sortedStars1 sortedStars2
   where
     go [] _ = []
-    go ((i, s1) : sts1) sts2 =
+    go (s1 : sts1) sts2 =
       case findClosestMatch s1 sts2 of
         Nothing -> go sts1 sts2
-        Just (j, _, remainingStars) -> (i, j) : go sts1 remainingStars
+        Just (s2, remainingStars) -> (s1, s2) : go sts1 remainingStars
 
-findClosestMatch :: Star -> [(Int, Star)] -> Maybe (Int, Star, [(Int, Star)])
+findClosestMatch :: Star -> [Star] -> Maybe (Star, [Star])
 findClosestMatch Star {..} indexedStars =
-  case sortOn (starRelevancy . snd) indexedStars of
+  case sortOn starRelevancy indexedStars of
     [] -> Nothing
-    ((j, mostRelevantStar) : remainingStars)
-      | mostRelevantStar.starRadius == starRadius -> Just (j, mostRelevantStar, remainingStars)
+    (mostRelevantStar : remainingStars)
+      | mostRelevantStar.starRadius == starRadius -> Just (mostRelevantStar, remainingStars)
       | otherwise -> Nothing
   where
     starRelevancy :: Star -> (Double, Double)

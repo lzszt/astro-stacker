@@ -39,6 +39,8 @@ library
                     , async
                     , containers
                     , optparse-applicative
+                    , random
+                    , hmatrix
     hs-source-dirs:   src-lib
     default-language: GHC2021
 
@@ -50,7 +52,8 @@ executable astro-stacker
     build-depends:
         base
       , astro-stacker
-
+      , containers
+      , async
     hs-source-dirs:   app
     default-language: GHC2021
 
@@ -65,3 +68,5 @@ test-suite astro-stacker-test
     build-depends:
         base
       , astro-stacker
+      , hspec 
+      , QuickCheck

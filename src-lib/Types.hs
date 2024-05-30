@@ -1,16 +1,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE RecordWildCards #-}
 
-module Types
-  ( Tiff,
-    Alignment (..),
-    OuterCorners (..),
-    Position (..),
-    distance,
-    distanceSqr,
-    Star (..),
-    Image (..),
-  )
-where
+module Types where
 
 import Codec.Picture qualified as P
 
@@ -23,6 +14,23 @@ data Alignment = Alignment
   }
   deriving (Show)
 
+rotate :: Double -> Position -> Position
+rotate 0 p = p
+rotate rotation Position {..} =
+  let x' = fromIntegral x
+      y' = fromIntegral y
+   in Position
+        (round $ x' * cos rotation - y' * sin rotation)
+        (round $ y' * cos rotation + x' * sin rotation)
+
+applyAlignment :: Alignment -> Position -> Position
+applyAlignment Alignment {..}
+  | rotation == 0 = translate
+  | otherwise = translate . rotate rotation
+  where
+    translate :: Position -> Position
+    translate Position {..} = Position (x + offsetX) (y + offsetY)
+
 data OuterCorners = OuterCorners
   { upperLeftCorner :: (Int, Int),
     lowerRightCorner :: (Int, Int)
@@ -33,7 +41,13 @@ data Position = Position
   { x :: Int,
     y :: Int
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Read, Eq, Ord)
+
+class Located a where
+  position :: a -> Position
+
+instance Located Position where
+  position = id
 
 {-# INLINE distance #-}
 distance :: Position -> Position -> Double
@@ -48,7 +62,23 @@ data Star = Star
   { starPosition :: Position,
     starRadius :: Double
   }
-  deriving (Show, Eq, Ord)
+  -- deriving (Show, Read, Eq, Ord)
+  deriving (Read, Eq, Ord)
+
+instance Show Star where
+  show (Star (Position x y) r) = "(" <> show x <> "," <> show y <> ")*" <> show r
+
+instance Located Star where
+  position = starPosition
+
+class (Located s) => IsStar s where
+  toStar :: s -> Star
+
+instance IsStar Star where
+  toStar = id
+
+starDistance :: Star -> Star -> Double
+starDistance s1 s2 = distance s1.starPosition s2.starPosition
 
 data Image = Image
   { image :: Tiff,
@@ -57,3 +87,23 @@ data Image = Image
 
 instance Show Image where
   show i = i.imageName <> " " <> show i.image.imageWidth <> "x" <> show i.image.imageHeight
+
+data AlignmentMode
+  = NoAlignment
+  | TranslationOnly
+  | TranslateAndRotate
+  deriving (Show)
+
+newtype Unordered a = Unordered {getUnordered :: (a, a)}
+  deriving (Show)
+
+mkUnordered :: (Ord a) => a -> a -> Unordered a
+mkUnordered x y
+  | x <= y = Unordered (x, y)
+  | otherwise = Unordered (y, x)
+
+instance (Eq a) => Eq (Unordered a) where
+  Unordered p1 == Unordered p2 = p1 == p2
+
+instance (Ord a) => Ord (Unordered a) where
+  compare (Unordered p1) (Unordered p2) = compare p1 p2

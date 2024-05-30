@@ -1,14 +1,20 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Align where
 
 import Control.Applicative
 import Control.Arrow
+import Data.Bifunctor (Bifunctor (bimap))
 import Data.Foldable
 import Data.Function
 import Data.List
+import Data.Map.Strict qualified as M
 import Data.Map.Strict qualified as Map
+import Data.Maybe
+import Data.Ord
 import Debug.Trace
+import Numeric.LinearAlgebra qualified as LA
 import Types
 
 computeAlignment :: AlignmentMode -> [(Position, Position)] -> Alignment
@@ -25,14 +31,19 @@ computeTranslation stars =
       (yMinRef, yMaxRef) = minMax $ map (y . fst) stars
       (xMinTar, xMaxTar) = minMax $ map (x . snd) stars
       (yMinTar, yMaxTar) = minMax $ map (y . snd) stars
-      xMinDiff = traceShowId $ xMinRef - xMaxTar
-      xMaxDiff = traceShowId $ xMaxRef - xMinTar
-      yMinDiff = traceShowId $ yMinRef - yMaxTar
-      yMaxDiff = traceShowId $ yMaxRef - yMinTar
-      potentialAlignments = [Alignment dX dY 0 | dX <- [xMinDiff .. xMaxDiff], dY <- [yMinDiff .. yMaxDiff]]
+      xMinDiff = xMinRef - xMaxTar
+      xMaxDiff = xMaxRef - xMinTar
+      yMinDiff = yMinRef - yMaxTar
+      yMaxDiff = yMaxRef - yMinTar
+      potentialAlignments =
+        [ let alignment = Alignment dX dY 0
+           in (alignment, alignmentScore alignment)
+          | dX <- [xMinDiff .. xMaxDiff],
+            dY <- [yMinDiff .. yMaxDiff]
+        ]
 
       alignmentScore alg = sum $ map (uncurry distanceSqr . second (applyAlignment alg)) stars
-   in minimumBy (compare `on` alignmentScore) potentialAlignments
+   in fst $ minimumBy (compare `on` snd) potentialAlignments
 
 minMax :: (Ord a) => [a] -> (a, a)
 minMax [] = error "Cannot get min/max from empty list"
@@ -93,11 +104,117 @@ data BilinearParameters = BilinearParameters
   }
   deriving (Show)
 
+transform :: BilinearParameters -> Position -> Position
+transform bp pt
+  | bp.tType == TT_BICUBIC =
+      let x = fromIntegral pt.x / bp.xWidth
+          y = fromIntegral pt.y / bp.yWidth
+          x2 = x * x
+          y2 = y * y
+          x3 = x * x * x
+          y3 = y * y * y
+       in Position
+            { x =
+                round $
+                  ( bp.a0
+                      + bp.a1 * x
+                      + bp.a2 * y
+                      + bp.a3 * x * y
+                      + bp.a4 * x2
+                      + bp.a5 * y2
+                      + bp.a6 * x2 * y
+                      + bp.a7 * x * y2
+                      + bp.a8 * x2 * y2
+                      + bp.a9 * x3
+                      + bp.a10 * y3
+                      + bp.a11 * x3 * y
+                      + bp.a12 * x * y3
+                      + bp.a13 * x3 * y2
+                      + bp.a14 * x2 * y3
+                      + bp.a15 * x3 * y3
+                  )
+                    * bp.xWidth,
+              y =
+                round $
+                  ( bp.b0
+                      + bp.b1 * x
+                      + bp.b2 * y
+                      + bp.b3 * x * y
+                      + bp.b4 * x2
+                      + bp.b5 * y2
+                      + bp.b6 * x2 * y
+                      + bp.b7 * x * y2
+                      + bp.b8 * x2 * y2
+                      + bp.b9 * x3
+                      + bp.b10 * y3
+                      + bp.b11 * x3 * y
+                      + bp.b12 * x * y3
+                      + bp.b13 * x3 * y2
+                      + bp.b14 * x2 * y3
+                      + bp.b15 * x3 * y3
+                  )
+                    * bp.yWidth
+            }
+  | bp.tType == TT_BISQUARED =
+      let x = fromIntegral pt.x / bp.xWidth
+          y = fromIntegral pt.y / bp.yWidth
+          x2 = x * x
+          y2 = y * y
+       in Position
+            { x =
+                round $
+                  ( bp.a0
+                      + bp.a1 * x
+                      + bp.a2 * y
+                      + bp.a3 * x * y
+                      + bp.a4 * x2
+                      + bp.a5 * y2
+                      + bp.a6 * x2 * y
+                      + bp.a7 * x * y2
+                      + bp.a8 * x2 * y2
+                  )
+                    * bp.xWidth,
+              y =
+                round $
+                  ( bp.b0
+                      + bp.b1 * x
+                      + bp.b2 * y
+                      + bp.b3 * x * y
+                      + bp.b4 * x2
+                      + bp.b5 * y2
+                      + bp.b6 * x2 * y
+                      + bp.b7 * x * y2
+                      + bp.b8 * x2 * y2
+                  )
+                    * bp.yWidth
+            }
+  | otherwise =
+      let x = fromIntegral pt.x / bp.xWidth
+          y = fromIntegral pt.y / bp.yWidth
+       in Position
+            { -- FIXME (felix): Should this be rounding here?
+              x = round $ (bp.a0 + bp.a1 * x + bp.a2 * y + bp.a3 * x * y) * bp.xWidth,
+              y = round $ (bp.b0 + bp.b1 * x + bp.b2 * y + bp.b3 * x * y) * bp.yWidth
+            }
+
+validateTransformation :: BilinearParameters -> [(Star, Star)] -> Double
+validateTransformation bp votingPairs =
+  maximum $
+    map
+      (\(refStar, tgtStar) -> distance refStar.starPosition (transform bp tgtStar.starPosition))
+      votingPairs
+
 data StarMatchingState = StarMatchingState
   { refStars :: [Star],
     targetStars :: [Star],
-    refStarDistances :: [StarDist],
-    targetStarDistances :: [StarDist]
+    refStarDistances :: [(Unordered Star, Double)],
+    targetStarDistances :: [(Unordered Star, Double)]
+  }
+  deriving (Show)
+
+data ImageInfo = ImageInfo
+  { imageWidth :: Int,
+    imageHeight :: Int
   }
   deriving (Show)
 
@@ -105,27 +222,32 @@ initialStarMatchingState :: [Star] -> [Star] -> StarMatchingState
 initialStarMatchingState ref target =
   StarMatchingState ref target (computeStarDistances ref) (computeStarDistances target)
 
-data StarDist = StarDist
-  { star1 :: Star,
-    star2 :: Star,
-    interStarDistance :: Double
-  }
-  deriving (Show)
+initVotingMap :: (Ord a, Ord b) => [a] -> [b] -> M.Map (a, b) Int
+initVotingMap refStars tgtStars = M.fromList [((r, t), 0) | r <- refStars, t <- tgtStars]
 
 vpFlagActive :: Int
 vpFlagActive = 0x00000001
 
 maxStarDistanceDelta :: Double
-maxStarDistanceDelta = 2.0
+maxStarDistanceDelta = 4.0
 
-getTransformationType :: TransformationType
-getTransformationType = TT_LINEAR
+minPairsToBicubic :: Int
+minPairsToBicubic = 40
 
-computeStarDistances :: [Star] -> [StarDist]
-computeStarDistances = sortBy (flip compare `on` (.interStarDistance)) . go
+minPairsToBiSquared :: Int
+minPairsToBiSquared = 25
+
+getTransformationType :: Int -> TransformationType
+getTransformationType nrVotes
+  | nrVotes >= minPairsToBicubic = TT_BICUBIC
+  | nrVotes >= minPairsToBiSquared = TT_BISQUARED
+  | otherwise = TT_BILINEAR
+
+computeStarDistances :: (Located a, Ord a) => [a] -> [(Unordered a, Double)]
+computeStarDistances = sortOn (Down . snd) . go
   where
     go [] = []
-    go (s : stars) = map (\st -> StarDist s st (starDistance s st)) stars <> go stars
+    go (s : stars) = map (\st -> (mkUnordered s st, calcStarDistance s st)) stars <> go stars
 
 takeWhilePlusOne :: (a -> Bool) -> [a] -> [a]
 takeWhilePlusOne p = go
@@ -134,6 +256,14 @@ takeWhilePlusOne p = go
     go (x : xs)
       | p x = x : go xs
       | otherwise = [x]
+
+dropWhilePlusOne :: (a -> Bool) -> [a] -> [a]
+dropWhilePlusOne p = go
+  where
+    go [] = []
+    go (x : xs)
+      | p x = go xs
+      | otherwise = xs
 
 data CoordTransState = CoordTransState
   { ctsTType :: TransformationType,
@@ -159,150 +289,176 @@ computeCoordinatesTransformation vps = undefined $ go initialCoordTransState
            in undefined
       | otherwise = state
 
-computeSigmaClippingTransformation :: [(Unordered Star, Int)] -> Maybe BilinearParameters
-computeSigmaClippingTransformation xs =
-  traceShow xs $
-    if length (show xs) >= 1000
-      then Nothing
-      else Just undefined
+computeSigmaClippingTransformation :: [(Star, Star)] -> TransformationType -> Maybe BilinearParameters
+computeSigmaClippingTransformation votingPairs ttType =
+  let areCornersLocked = False
+   in if areCornersLocked
+        then undefined
+        else computeCoordinateTransformation votingPairs ttType
 
-computeLargeTriangleTransformation :: StarMatchingState -> Maybe BilinearParameters
-computeLargeTriangleTransformation sms =
-  let votingPairs =
-        sortBy (flip compare `on` snd) $
-          Map.toList $
-            goOverStarDistances
-              (initVotingMap sms)
-              sms.refStarDistances
-              sms.targetStarDistances
-   in if length votingPairs >= length sms.targetStars
+calcStarDistance :: (Located a1, Located a2) => a1 -> a2 -> Double
+calcStarDistance s1 s2 = distanceSqr (position s1) (position s2)
+
+maxRadiusDelta = 2
+
+-- computeLargeTriangleTransformation :: [Star] -> [Star] -> Maybe BilinearParameters
+-- computeLargeTriangleTransformation ::
+--   (Located ref, Located target, Ord ref, Ord target) =>
+--   [ref] ->
+--   [target] ->
+--   Maybe [(ref, target)]
+computeLargeTriangleTransformation :: (IsStar a, IsStar b, Ord a, Ord b, Show a, Show b) => [a] -> [b] -> Maybe [(a, b)]
+computeLargeTriangleTransformation refStars tgtStars =
+  let votes = goOverStarDistances (initVotingMap refStars tgtStars) refStarDistances tgtStarDistances
+   in if length votes >= length tgtStars
         then
-          let minNumberOfVotes = max 1 $ snd (votingPairs !! (2 * length sms.targetStars - 1))
-              relevantVotingPairs = takeWhilePlusOne ((>= minNumberOfVotes) . snd) votingPairs
-           in case computeSigmaClippingTransformation relevantVotingPairs of
-                Nothing -> Nothing
-                Just bp
-                  | bp.tType == TT_LINEAR ->
-                      Just bp {a3 = 0, b3 = 0}
-                  | otherwise -> Just bp
+          let remainingVotes = resolveVotes (length tgtStars) votes
+              ttType = getTransformationType (length remainingVotes)
+           in Just remainingVotes -- computeSigmaClippingTransformation remainingVotes ttType
         else Nothing
   where
-    goOverStarDistances :: VotingMap -> [StarDist] -> [StarDist] -> VotingMap
-    goOverStarDistances acc [] _ = acc
-    goOverStarDistances acc _ [] = acc
-    goOverStarDistances acc refs@(refDist : refDists) tars@(tarDist : tarDists)
-      | abs (refDist.interStarDistance - tarDist.interStarDistance) <= maxStarDistanceDelta =
-          let refStar1 = refDist.star1
-              refStar2 = refDist.star2
+    refStarDistances = computeStarDistances refStars
+    tgtStarDistances = computeStarDistances tgtStars
 
-              tarStar1 = tarDist.star1
-              tarStar2 = tarDist.star2
-              tarStars3 =
-                [ tarStar3
-                  | tarStar3 <- sms.targetStars,
-                    tarStar3 /= tarStar1,
-                    tarStar3 /= tarStar2
-                ]
-              refStars3 =
-                [ refStar3
-                  | refStar3 <- sms.refStars,
-                    refStar3 /= refStar1,
-                    refStar3 /= refStar2
-                ]
-              newAcc =
-                foldl
-                  ( \vm tarStar3 ->
-                      let tarDist13 = starDistance tarStar1 tarStar3
-                          tarDist23 = starDistance tarStar2 tarStar3
-                          ratio = max tarDist13 tarDist23 / tarDist.interStarDistance
-                       in if ratio >= 0.9
-                            then vm
-                            else
-                              foldl
-                                ( \vm' refStar3 ->
-                                    let refDist13 = starDistance refStar1 refStar3
-                                        refDist23 = starDistance refStar2 refStar3
-                                     in ( if abs (refDist13 - tarDist13) < maxStarDistanceDelta
-                                            && abs (refDist23 - tarDist23) < maxStarDistanceDelta
+    -- goOverStarDistances :: VotingMap -> [(Unordered Star, Double)] -> [(Unordered Star, Double)] -> [((Star, Star), Int)]
+    goOverStarDistances vm [] _ = sortOn (Down . snd) $ M.toList vm
+    goOverStarDistances vm _ [] = sortOn (Down . snd) $ M.toList vm
+    goOverStarDistances
+      vm
+      rDists@((Unordered (refStar1, refStar2), refDistanceSqr12) : refDists)
+      tDists@((Unordered (tgtStar1, tgtStar2), tgtDistanceSqr12) : tgtDists) =
+        let newVM =
+              if abs (tgtDistanceSqr12 - refDistanceSqr12) <= maxStarDistanceDelta
+                -- && ( ( abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
+                --          && abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
+                --      )
+                --        || ( abs ((starRadius $ toStar refStar2) - (starRadius $ toStar tgtStar1)) <= maxStarDistanceDelta
+                --               && abs ((starRadius $ toStar refStar1) - (starRadius $ toStar tgtStar2)) <= maxStarDistanceDelta
+                --           )
+                --    )
+                then
+                  foldl'
+                    ( \acc tgtStar3 ->
+                        if tgtStar3 /= tgtStar1 && tgtStar3 /= tgtStar2
+                          then
+                            let tgtDistanceSqr13 = calcStarDistance tgtStar1 tgtStar3
+                                tgtDistanceSqr23 = calcStarDistance tgtStar2 tgtStar3
+                                fRatio = max tgtDistanceSqr13 tgtDistanceSqr23 / tgtDistanceSqr12
+                             in -- Filter triangle because :
+                                -- Larger triangle are already used
+                                -- 0.9^2 avoids many useless triangles with two big sides and one small side
+                                if fRatio < 0.81
+                                  then
+                                    -- FIXME (felix): this should be doable in parallel and the votes merged
+                                    foldl'
+                                      ( \acc refStar3 ->
+                                          if refStar3 /= refStar1
+                                            && refStar3 /= refStar2
+                                            -- && abs ((starRadius $ toStar refStar3) - (starRadius $ toStar tgtStar3)) <= maxStarDistanceDelta
                                             then
-                                              addVote refStar1 tarStar1
-                                                . addVote refStar2 tarStar2
-                                                . addVote refStar3 tarStar3
-                                            else
-                                              if abs (refDist23 - tarDist13) < maxStarDistanceDelta
-                                                && abs (refDist13 - tarDist23) < maxStarDistanceDelta
-                                                then
-                                                  addVote refStar1 tarStar2
-                                                    . addVote refStar2 tarStar1
-                                                    . addVote refStar3 tarStar3
-                                                else id
-                                        )
-                                          vm'
-                                )
-                                vm
-                                refStars3
-                  )
-                  acc
-                  tarStars3
-           in goOverStarDistances newAcc refDists tarDists
-      | refDist.interStarDistance < tarDist.interStarDistance =
-          goOverStarDistances acc refs tarDists
-      | otherwise = goOverStarDistances acc refDists tars
+                                              let refDistanceSqr13 = calcStarDistance refStar1 refStar3
+                                                  refDistanceSqr23 = calcStarDistance refStar2 refStar3
+                                               in if abs (refDistanceSqr13 - tgtDistanceSqr13) < maxStarDistanceDelta
+                                                    && abs (refDistanceSqr23 - tgtDistanceSqr23) < maxStarDistanceDelta
+                                                    then
+                                                      addVote refStar1 tgtStar1 $
+                                                        addVote refStar2 tgtStar2 $
+                                                          addVote refStar3 tgtStar3 acc
+                                                    else
+                                                      if abs (refDistanceSqr23 - tgtDistanceSqr13) < maxStarDistanceDelta
+                                                        && abs (refDistanceSqr13 - tgtDistanceSqr23) < maxStarDistanceDelta
+                                                        then
+                                                          addVote refStar1 tgtStar2 $
+                                                            addVote refStar2 tgtStar1 $
+                                                              addVote refStar3 tgtStar3 acc
+                                                        else acc
+                                            else acc
+                                      )
+                                      acc
+                                      refStars
+                                  else acc
+                          else acc
+                    )
+                    vm
+                    tgtStars
+                else vm
+         in if tgtDistanceSqr12 < refDistanceSqr12
+              then goOverStarDistances newVM refDists tDists
+              else goOverStarDistances newVM rDists tgtDists
 
-addVote :: Star -> Star -> VotingMap -> VotingMap
+resolveVotes :: Int -> [((a, b), Int)] -> [(a, b)]
+resolveVotes nTgtStars votes =
+  let minNrVotes = max 1 $ snd $ votes !! (nTgtStars * 2 - 1)
+   in map fst $ takeWhile ((>= minNrVotes) . snd) votes
+
+getStarDist :: (Ord p) => p -> p -> M.Map (Unordered p) b -> Maybe b
+getStarDist s1 s2 dists =
+  let key = mkUnordered s1 s2
+   in M.lookup key dists
+
+addVote :: (Ord a, Ord b) => a -> b -> M.Map (a, b) Int -> M.Map (a, b) Int
 addVote s1 s2 =
   -- trace ("vote: " <> show s1 <> "," <> show s2) $
-  Map.update (Just . (+ 1)) (mkUnordered s1 s2)
+  Map.alter
+    ( \case
+        Nothing -> Just 1
+        Just n -> Just $ n + 1
+    )
+    (s1, s2)
 
 computeMatchingTriangleTransformation :: Maybe BilinearParameters
 computeMatchingTriangleTransformation = error "implement ComputeMatchingTriangleTransformation"
 
-type VotingMap = Map.Map (Unordered Star) Int
+type VotingMap = Map.Map (Star, Star) Int
 
-initVotingMap :: StarMatchingState -> VotingMap
-initVotingMap sms = Map.fromList [(mkUnordered ref tar, 0) | ref <- sms.refStars, tar <- sms.targetStars]
+computeCoordinateTransformation :: [(Star, Star)] -> TransformationType -> Maybe BilinearParameters
+computeCoordinateTransformation votingPairs ttType =
+  let nrPairs = case ttType of
+        TT_BICUBIC -> 32
+        TT_BISQUARED -> 18
+        _ -> 8
+   in undefined
 
-computeCoordinateTransformation :: StarMatchingState -> Maybe BilinearParameters
-computeCoordinateTransformation sms =
-  case getTransformationType of
-    TT_NONE -> Nothing
-    _
-      | length sms.refStars >= 8,
-        length sms.targetStars >= 8 ->
-          computeLargeTriangleTransformation sms <|> computeMatchingTriangleTransformation
-      | otherwise -> Nothing
+computeTransformation :: [(Star, Star)] -> TransformationType -> Maybe BilinearParameters
+computeTransformation votingPairs ttType =
+  let
+   in undefined
 
-testRefStars :: [Star]
-testRefStars = take 15 stars
+newtype RefStar = RefStar {unRef :: Star}
+  deriving (Eq, Ord, Show, Located, IsStar)
 
-stars :: [Star]
-stars =
-  [ Star (Position 251 34) 10,
-    Star (Position 462 25) 4,
-    Star (Position 894 446) 5,
-    Star (Position 810 659) 30,
-    Star (Position 716 918) 20,
-    Star (Position 2 253) 44,
-    Star (Position 459 541) 23,
-    Star (Position 72 145) 42,
-    Star (Position 351 700) 26,
-    Star (Position 941 827) 48,
-    Star (Position 137 885) 18,
-    Star (Position 110 710) 39,
-    Star (Position 889 844) 47,
-    Star (Position 245 528) 43,
-    Star (Position 518 603) 17,
-    Star (Position 95 810) 17,
-    Star (Position 761 193) 39,
-    Star (Position 872 143) 27,
-    Star (Position 270 567) 22,
-    Star (Position 96 582) 28
-  ]
+newtype TargetStar = TargetStar {unTarget :: Star}
+  deriving (Show, Located, Eq, Ord, IsStar)
 
-testTargetStars :: [Star]
-testTargetStars = drop 5 $ map (\s -> s {starPosition = Position (s.starPosition.x + 13) (s.starPosition.y + 13)}) testRefStars
+locatedDistance :: (Located a, Located b) => a -> b -> Double
+locatedDistance x y = distance (position x) (position y)
 
-test :: Maybe BilinearParameters
-test =
-  let sms = initialStarMatchingState testRefStars testTargetStars
-   in computeCoordinateTransformation sms
+solve :: LA.Matrix Double -> LA.Matrix Double -> LA.Matrix Double
+solve ref tgt =
+  let m = ref <> LA.tr tgt
+      (u, sigma, v) = LA.svd m
+   in u <> LA.tr' v
+
+testFoo = do
+  refStars <- map RefStar . read <$> readFile "./resources/tmp/img_1_stars.txt"
+  targetStars <- map TargetStar . read <$> readFile "./resources/tmp/img_2_stars.txt"
+  let Just r = computeLargeTriangleTransformation refStars targetStars
+  print $ length r
+  let uniques = M.toList $ M.fromListWith const r
+  print $ length uniques
+
+-- let testStars = uniques
+-- let (refVector, tgtVector) =
+--       bimap positionListToVector positionListToVector $
+--         unzip $
+--           map (bimap position position) testStars
+-- let r = solve refVector tgtVector
+--     diff = refVector - (r <> tgtVector)
+-- print diff
+
+positionListToVector :: [Position] -> LA.Matrix Double
+positionListToVector ps =
+  LA.matrix (length ps) $
+    concat $
+      transpose $
+        map (\p -> map fromIntegral [p.x, p.y]) ps

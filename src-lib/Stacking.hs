@@ -12,20 +12,6 @@ import Data.List
 import Data.Maybe
 import Types
 
-rotate :: Double -> Position -> Position
-rotate rotation Position {..} =
-  let x' = fromIntegral x
-      y' = fromIntegral y
-   in Position
-        (round $ x' * cos rotation - y' * sin rotation)
-        (round $ y' * cos rotation + x' * sin rotation)
-
-applyAlignment :: Alignment -> Position -> Position
-applyAlignment Alignment {..} = translate . rotate rotation
-  where
-    translate :: Position -> Position
-    translate Position {..} = Position (x + offsetX) (y + offsetY)
-
 avg :: [Maybe P.PixelRGB16] -> P.PixelRGBA16
 avg xs =
   \case
@@ -105,39 +91,3 @@ stackImages images@((P.Image w h _, Alignment offX offY rot) : sources) =
 starLocationApplyAlignment :: Alignment -> Star -> Star
 starLocationApplyAlignment alg (Star pos starRadius) =
   (`Star` starRadius) $ applyAlignment alg pos
-
--- testImgs :: IO [(Tiff, Alignment)]
--- testImgs = do
---   img540 <- drawStarLocations stars540 . getTiff <$> loadTiff "./resources/lights/DSC00540.tiff"
---   img541 <- drawStarLocations stars541 . getTiff <$> loadTiff "./resources/lights/DSC00541.tiff"
---   pure
---     [ (img540, alignment540),
---       (img541, traceShowId alignment541)
---     ]
-
--- stars1 = [StarLocation 10 10, StarLocation 10 30, StarLocation 20 80]
-
--- stars2 = [StarLocation 15 15, StarLocation 15 35, StarLocation 25 85]
-
--- testImgs =
---   [ ( P.generateImage (\x y -> if StarLocation x y `elem` stars1 then P.PixelRGB16 maxBound maxBound maxBound else PixelRGB16 0 0 0) 40 100,
---       Alignment 0 0 0
---     ),
---     ( P.generateImage (\x y -> if StarLocation x y `elem` stars2 then P.PixelRGB16 maxBound maxBound maxBound else PixelRGB16 0 0 0) 40 100,
---       Alignment (-5) (-5) 0
---     )
---   ]
-
--- test = testImgs >>= P.writeTiff "./resources/tmp/stack_correct.tiff" . stackImages
-
--- stars540 :: [StarLocation]
--- stars540 = map (uncurry StarLocation) [(644, 1393), (2764, 4991), (3389, 454)]
-
--- alignment540 :: Alignment
--- alignment540 = Alignment 0 0 0
-
--- stars541 :: [StarLocation]
--- stars541 = map (uncurry StarLocation) [(645, 1385), (2768, 4987), (3392, 447)]
-
--- alignment541 :: Alignment
--- alignment541 = computeAlignment stars540 stars541
