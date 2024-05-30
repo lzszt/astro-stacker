@@ -385,15 +385,6 @@ computeTransformation votingPairs ttType =
   let
    in undefined
 
-newtype RefStar = RefStar {unRef :: Star}
-  deriving (Eq, Ord, Show, Located, IsStar)
-
-newtype TargetStar = TargetStar {unTarget :: Star}
-  deriving (Show, Located, Eq, Ord, IsStar)
-
-locatedDistance :: (Located a, Located b) => a -> b -> Double
-locatedDistance x y = distance (position x) (position y)
-
 solve :: LA.Matrix Double -> LA.Matrix Double -> LA.Matrix Double
 solve ref tgt =
   let m = ref <> LA.tr tgt

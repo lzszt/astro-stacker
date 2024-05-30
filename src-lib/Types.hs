@@ -71,6 +71,15 @@ instance Show Star where
 instance Located Star where
   position = starPosition
 
+newtype RefStar = RefStar {unRef :: Star}
+  deriving (Eq, Ord, Show, Located, IsStar)
+
+newtype TargetStar = TargetStar {unTarget :: Star}
+  deriving (Show, Located, Eq, Ord, IsStar)
+
+locatedDistance :: (Located a, Located b) => a -> b -> Double
+locatedDistance x y = distance (position x) (position y)
+
 class (Located s) => IsStar s where
   toStar :: s -> Star
 
