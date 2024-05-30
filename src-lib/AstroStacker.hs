@@ -17,6 +17,7 @@ import Data.Map.Strict qualified as M
 import Data.Maybe
 import ImageUtils
 import Locating
+import Matching
 import Stacking
 import System.Directory
 import System.FilePath
