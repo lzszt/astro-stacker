@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
@@ -253,16 +254,16 @@ locateStarsDSS img@P.Image {..} =
                   ( \wannabes radiusDelta ->
                       P.pixelFold
                         ( \wannabeStars x y pixelIntensity ->
-                            let withinKnownStar = isWithinStar x y wannabeStars
-                             in if (pixelIntensity >= intensityThreshold) && not withinKnownStar
-                                  then
-                                    let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
-                                     in if not mainOk && not brighterPixel && maxRadius > 2
-                                          then case generateWannabe x y radiusDelta pds of
-                                            Nothing -> wannabeStars
-                                            Just newStar -> addToStarStructure newStar wannabeStars
-                                          else wannabeStars
-                                  else wannabeStars
+                            if
+                              | pixelIntensity < intensityThreshold -> wannabeStars
+                              | isWithinStar x y wannabeStars -> wannabeStars
+                              | otherwise ->
+                                  let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
+                                   in if not mainOk && not brighterPixel && maxRadius > 2
+                                        then case generateWannabe x y radiusDelta pds of
+                                          Nothing -> wannabeStars
+                                          Just newStar -> addToStarStructure newStar wannabeStars
+                                        else wannabeStars
                         )
                         wannabes
                         img
