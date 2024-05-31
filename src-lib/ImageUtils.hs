@@ -47,3 +47,52 @@ pixelZipWith f P.Image {imageWidth = w, imageHeight = h, imageData = vec1} P.Ima
       -- safe because newArray can't be referenced as a mutable array
       -- outside of this where block
       VS.unsafeFreeze newArr
+
+{-# SPECIALIZE INLINE extractSubImage :: Int -> Int -> Int -> Int -> P.Image P.Pixel16 -> P.Image P.Pixel16 #-}
+{-# SPECIALIZE INLINE extractSubImage :: Int -> Int -> Int -> Int -> P.Image P.PixelRGB16 -> P.Image P.PixelRGB16 #-}
+{-# SPECIALIZE INLINE extractSubImage :: Int -> Int -> Int -> Int -> P.Image P.PixelRGBA16 -> P.Image P.PixelRGBA16 #-}
+extractSubImage ::
+  forall a.
+  (P.Pixel a) =>
+  Int ->
+  Int ->
+  Int ->
+  Int ->
+  P.Image a ->
+  P.Image a
+extractSubImage xTopLeft yTopLeft width height P.Image {..} =
+  P.Image
+    { imageWidth = outWidth,
+      imageHeight = outHeight,
+      imageData = pixels
+    }
+  where
+    componentCount = P.componentCount (undefined :: a)
+    minX = max 0 xTopLeft
+    maxX = min (imageWidth - 1) $ xTopLeft + width
+    minY = max 0 yTopLeft
+    maxY = min (imageHeight - 1) $ yTopLeft + height
+    outWidth = maxX - minX
+    outHeight = maxY - minY
+    missingWidth = imageWidth - outWidth
+
+    startReadIdx = (minY * width + minX) * componentCount
+
+    pixels = runST $ do
+      newArr <- MV.new (outWidth * outHeight * componentCount)
+      let lineMapper _ _ y | y >= maxY = return ()
+          lineMapper readIdxLine writeIdxLine y = colMapper readIdxLine writeIdxLine minX
+            where
+              colMapper readIdx writeIdx x
+                | x >= maxX = lineMapper (readIdx + missingWidth) writeIdx (y + 1)
+                | otherwise = do
+                    P.unsafeWritePixel @a newArr writeIdx $ P.unsafePixelAt imageData readIdx
+                    colMapper
+                      (readIdx + componentCount)
+                      (writeIdx + componentCount)
+                      (x + 1)
+      lineMapper startReadIdx 0 minY
+      -- unsafeFreeze avoids making a second copy and it will be
+      -- safe because newArray can't be referenced as a mutable array
+      -- outside of this where block
+      VS.unsafeFreeze newArr
