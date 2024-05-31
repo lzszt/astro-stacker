@@ -15,7 +15,6 @@ import Data.Maybe
 import Data.Set qualified as Set
 import Data.Vector.Storable qualified as VS
 import Data.Word
-import Debug.Trace
 import System.Random
 import Types
 
@@ -212,21 +211,36 @@ addToStarStructure ws =
         then insertAt minX
         else insertAt minX . insertAt (ws.posX `div` maxStarSize) . insertAt maxX
 
+intensityHistogram :: P.Image Word16 -> Map.Map Word16 Word16
+intensityHistogram =
+  VS.foldl'
+    ( \acc pixelIntensity ->
+        Map.alter
+          (Just . maybe 1 (+ 1))
+          pixelIntensity
+          acc
+    )
+    Map.empty
+    . P.imageData
+
+accumulateTill :: Word16 -> Map.Map Word16 Word16 -> Word16
+accumulateTill cutoffSamples =
+  fst
+    . foldl'
+      ( \(!acc@(_, valuesTillNow)) (pixelValue, pixelCount) ->
+          if valuesTillNow < cutoffSamples
+            then (pixelValue, valuesTillNow + pixelCount)
+            else acc
+      )
+      (0, 0)
+    . Map.toAscList
+
 locateStarsDSS :: P.Image Word16 -> [Star]
 locateStarsDSS img@P.Image {..} =
-  let maxIntensity = VS.foldl1' max imageData
-      histogram = Map.toAscList $ VS.foldl' (\acc pixelIntensity -> Map.insertWith (+) pixelIntensity (1 :: Word16) acc) Map.empty imageData
+  let histogram = intensityHistogram img
+      maxIntensity = fst $ Map.findMax histogram
       countHalfValues = fromIntegral $ ((imageHeight - 1) * (imageWidth - 1)) `div` 2
-      background =
-        fst $
-          foldl'
-            ( \acc@(_, valuesTillNow) (pixelValue, pixelCount) ->
-                if valuesTillNow < countHalfValues
-                  then (pixelValue, valuesTillNow + pixelCount)
-                  else acc
-            )
-            (0, 0)
-            histogram
+      background = accumulateTill countHalfValues histogram
       minLuminancy = round @Double $ 0.1 * fromIntegral (maxBound @Word16)
       intensityThreshold = minLuminancy + background
       deltaRadii = [0 .. 3]
