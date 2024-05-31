@@ -25,7 +25,6 @@ library
                     , Config
                     , Locating
                     , Stacking
-                    , StarMatching
                     , Types
                     , ImageUtils
                     , Matching
