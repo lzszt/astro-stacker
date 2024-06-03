@@ -123,7 +123,7 @@ data RayStep a
     west :: a,
     northWest :: a
   }
-  deriving (Show, Functor, Foldable)
+  deriving (Show, Functor, Foldable, Eq)
 
 rayDirs :: RayStep (Int, Int)
 rayDirs =

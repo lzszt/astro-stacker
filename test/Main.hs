@@ -5,11 +5,14 @@ module Main (main) where
 
 import Data.Function
 import Data.List
+import ImageUtils
+import Locating
 import Matching
 import System.FilePath
 import Test.Hspec
 import Test.Hspec.Expectations.Pretty qualified as HP
 import Test.Hspec.Golden qualified as G
+import Test.Hspec.QuickCheck
 import Test.QuickCheck
 import Types
 
@@ -75,6 +78,26 @@ formatStar (Star (Position x y) r) = "(" <> show x <> "," <> show y <> ")*" <> s
 formatStars :: [(Star, Star)] -> String
 formatStars = unwords . map (\(ref, tgt) -> "(" <> formatStar ref <> "," <> formatStar tgt <> ")")
 
+instance (Arbitrary a) => Arbitrary (RayStep a) where
+  arbitrary =
+    RayStep
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+
+instance Arbitrary PixelDirection' where
+  arbitrary =
+    PixelDirection'
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+
 spec :: Spec
 spec = do
   describe "foo" $
@@ -90,6 +113,15 @@ spec = do
        in --  in result `HP.shouldBe` res
 
           customGoldenPretty "computeLargeTriangleTransformation" formatStars result
+  describe "rayStepFromDirections . directionsFromRayStep" $
+    prop "should be the identity function" $ \rayStep ->
+      let res = rayStepFromDirections $ directionsFromRayStep rayStep
+       in res `shouldBe` rayStep
+  describe " directionsFromRayStep . rayStepFromDirections" $
+    prop "should be the identity function" $ \rayStep ->
+      let directions = directionsFromRayStep rayStep
+          res = directionsFromRayStep $ rayStepFromDirections directions
+       in res `shouldBe` directions
 
 -- describe "addition" $ do
 --   prop "should be comutative" $ \(NonEmpty sts) (Positive offX, Positive offY) ->

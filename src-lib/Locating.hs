@@ -85,6 +85,14 @@ initialDirectionState =
       maxRadius = 0
     }
 
+data PixelDirection' = PixelDirection'
+  { pdIntensity :: Word16,
+    pdRadius :: Int,
+    pdNrBrighterPixels :: Int,
+    pdPxOk :: Int
+  }
+  deriving (Show, Eq)
+
 data PixelDirection = PixelDirection
   { intensity :: Word16,
     radius :: Int,
@@ -93,7 +101,7 @@ data PixelDirection = PixelDirection
     dirX :: Int,
     dirY :: Int
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 mkPixelDirection :: Int -> Int -> PixelDirection
 mkPixelDirection dX dY =
@@ -163,16 +171,62 @@ isWannabeStar img backgroundIntensity x y pixelIntensity =
 
 generateWannabe :: Int -> Int -> Int -> [PixelDirection] -> Maybe WannabeStar
 generateWannabe x y radiusDelta pds =
-  let wannabeStarOk =
-        all (<= radiusDelta) $
-          [abs ((pds !! k1).radius - (pds !! k2).radius) | k1 <- [0 .. 3], k2 <- [0 .. 3], k1 /= k2]
-            <> [abs ((pds !! k1).radius - (pds !! k2).radius) | k1 <- [4 .. 7], k2 <- [4 .. 7], k1 /= k2]
+  let rs = rayStepFromDirections pds
+      wannabeStarOk =
+        all ((<= radiusDelta) . abs) $
+          [ rs.north.pdRadius - rs.east.pdRadius,
+            rs.north.pdRadius - rs.south.pdRadius,
+            rs.north.pdRadius - rs.west.pdRadius,
+            rs.east.pdRadius - rs.south.pdRadius,
+            rs.east.pdRadius - rs.west.pdRadius,
+            rs.south.pdRadius - rs.west.pdRadius,
+            rs.northEast.pdRadius - rs.southEast.pdRadius,
+            rs.northEast.pdRadius - rs.southWest.pdRadius,
+            rs.northEast.pdRadius - rs.northWest.pdRadius,
+            rs.southEast.pdRadius - rs.southWest.pdRadius,
+            rs.southEast.pdRadius - rs.northWest.pdRadius,
+            rs.southWest.pdRadius - rs.northWest.pdRadius
+          ]
 
       meanRadius1 = (/ 4) $ fromIntegral $ sum $ map (.radius) $ take 4 pds
       meanRadius2 = (* sqrt 2) . (/ 4) $ fromIntegral $ sum $ map (.radius) $ drop 4 pds
    in if wannabeStarOk
         then Just $ WannabeStar x y ((meanRadius1 + meanRadius2) / 2)
         else Nothing
+
+rayStepFromDirections :: [PixelDirection] -> RayStep PixelDirection'
+rayStepFromDirections pds =
+  fmap
+    ( \pd ->
+        PixelDirection'
+          { pdIntensity = pd.intensity,
+            pdRadius = pd.radius,
+            pdNrBrighterPixels = pd.nrBrighterPixels,
+            pdPxOk = pd.pxOk
+          }
+    )
+    $ fmap
+      ( fromMaybe (error "failed to find correct PixelDirection")
+          . (\(x, y) -> find (\pd -> pd.dirX == x && pd.dirY == y) pds)
+      )
+      rayDirs
+
+directionsFromRayStep :: RayStep PixelDirection' -> [PixelDirection]
+directionsFromRayStep rs =
+  fmap
+    ( \((dirX, dirY), pd) ->
+        PixelDirection
+          { intensity = pd.pdIntensity,
+            radius = pd.pdRadius,
+            nrBrighterPixels = pd.pdNrBrighterPixels,
+            pxOk = pd.pdPxOk,
+            dirX = dirX,
+            dirY = dirY
+          }
+    )
+    $ zip
+      [(0, -1), (1, 0), (0, 1), (-1, 0), (1, -1), (1, 1), (-1, 1), (-1, -1)]
+      [rs.north, rs.east, rs.south, rs.west, rs.northEast, rs.southEast, rs.southWest, rs.northWest]
 
 type StarStructure = Map.Map Int (Set.Set WannabeStar)
 
