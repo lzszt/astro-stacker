@@ -4,6 +4,7 @@ module ImageUtils where
 
 import Codec.Picture qualified as P
 import Control.Monad.ST
+import Data.Maybe
 import Data.Vector.Storable qualified as VS
 import Data.Vector.Storable.Mutable qualified as MV
 
@@ -96,3 +97,69 @@ extractSubImage xTopLeft yTopLeft width height P.Image {..} =
       -- safe because newArray can't be referenced as a mutable array
       -- outside of this where block
       VS.unsafeFreeze newArr
+
+{-# INLINE safePixelAt #-}
+safePixelAt :: (P.Pixel a) => P.Image a -> Int -> Int -> Maybe a
+safePixelAt img@P.Image {..} x y
+  | x >= 0,
+    x < imageWidth,
+    y >= 0,
+    y < imageHeight =
+      Just $ P.pixelAt img x y
+  | otherwise = Nothing
+
+{-# INLINE pixelAtDefault #-}
+pixelAtDefault :: (P.Pixel a) => a -> P.Image a -> Int -> Int -> a
+pixelAtDefault def img x y = fromMaybe def $ safePixelAt img x y
+
+data RayStep a
+  = RayStep
+  { north :: a,
+    northEast :: a,
+    east :: a,
+    southEast :: a,
+    south :: a,
+    southWest :: a,
+    west :: a,
+    northWest :: a
+  }
+  deriving (Show, Functor, Foldable)
+
+rayDirs :: RayStep (Int, Int)
+rayDirs =
+  RayStep
+    { north = (0, -1),
+      northEast = (1, -1),
+      east = (1, 0),
+      southEast = (1, 1),
+      south = (0, 1),
+      southWest = (-1, 1),
+      west = (-1, 0),
+      northWest = (-1, -1)
+    }
+
+both :: (t -> b) -> (t, t) -> (b, b)
+both f (x, y) = (f x, f y)
+
+elementWise :: (a -> b -> c) -> (a, a) -> (b, b) -> (c, c)
+elementWise f (x, y) (w, v) = (f x w, f y v)
+
+generateRays :: (P.Pixel a, Num a) => Int -> Int -> Int -> P.Image a -> [RayStep a]
+generateRays x y rayLength img = go 1 []
+  where
+    go !l !rays
+      | l > rayLength = reverse rays
+      | otherwise =
+          let nextRayStepM = fmap (uncurry (safePixelAt img) . elementWise (+) (x, y) . both (* l)) rayDirs
+           in case nextRayStepM of
+                RayStep
+                  { north = Nothing,
+                    northEast = Nothing,
+                    east = Nothing,
+                    southEast = Nothing,
+                    south = Nothing,
+                    southWest = Nothing,
+                    west = Nothing,
+                    northWest = Nothing
+                  } -> reverse rays
+                nextRayStep -> go (l + 1) (fmap (fromMaybe 0) nextRayStep : rays)
