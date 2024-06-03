@@ -16,6 +16,7 @@ import Data.Maybe
 import Data.Set qualified as Set
 import Data.Vector.Storable qualified as VS
 import Data.Word
+import ImageUtils
 import System.Random
 import Types
 
@@ -104,18 +105,6 @@ mkPixelDirection dX dY =
       dirX = dX,
       dirY = dY
     }
-
-safePixelAt :: (P.Pixel a) => P.Image a -> Int -> Int -> Maybe a
-safePixelAt img@P.Image {..} x y
-  | x >= 0,
-    x < imageWidth,
-    y >= 0,
-    y < imageHeight =
-      Just $ P.pixelAt img x y
-  | otherwise = Nothing
-
-pixelAtDefault :: (P.Pixel a) => a -> P.Image a -> Int -> Int -> a
-pixelAtDefault def img x y = fromMaybe def $ safePixelAt img x y
 
 concentricCircles ::
   Int ->
