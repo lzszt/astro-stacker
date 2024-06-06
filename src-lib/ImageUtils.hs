@@ -125,6 +125,19 @@ data RayStep a
   }
   deriving (Show, Functor, Foldable, Eq)
 
+mapRayStep :: ((Int, Int) -> a -> b) -> RayStep a -> RayStep b
+mapRayStep f RayStep {..} =
+  RayStep
+    { north = f (0, -1) north,
+      northEast = f (1, -1) northEast,
+      east = f (1, 0) east,
+      southEast = f (1, 1) southEast,
+      south = f (0, 1) south,
+      southWest = f (-1, 1) southWest,
+      west = f (-1, 0) west,
+      northWest = f (-1, -1) northWest
+    }
+
 rayDirs :: RayStep (Int, Int)
 rayDirs =
   RayStep

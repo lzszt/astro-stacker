@@ -156,7 +156,7 @@ isWannabeStar img backgroundIntensity x y pixelIntensity =
         ( \acc@(ds@DirectionState {..}, rayStep) testedRadius ->
             if mainOk && not brighterPixel
               then
-                let newDirs = rayStepFromDirections $ map (\dir -> dir {intensity = pixelAtDefault 0 img (x + dir.dirX * testedRadius) (y + dir.dirY * testedRadius)}) $ directionsFromRayStep rayStep
+                let newDirs = mapRayStep (\(dirX, dirY) dir -> dir {pdIntensity = pixelAtDefault 0 img (x + dirX * testedRadius) (y + dirY * testedRadius)}) rayStep
                  in concentricCircles
                       testedRadius
                       backgroundIntensity
