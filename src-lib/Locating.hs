@@ -117,11 +117,11 @@ concentricCircles ::
   Int ->
   Word16 ->
   Word16 ->
-  (DirectionState, [PixelDirection]) ->
-  [PixelDirection] ->
-  (DirectionState, [PixelDirection])
-concentricCircles testedRadius backgroundIntensity pixelIntensity =
-  go
+  DirectionState ->
+  RayStep PixelDirection' ->
+  (DirectionState, RayStep PixelDirection')
+concentricCircles testedRadius backgroundIntensity pixelIntensity state =
+  fmap rayStepFromDirections . go (state, []) . directionsFromRayStep
   where
     go acc [] = acc
     go (ds@DirectionState {..}, pds) (pd : restPds)
@@ -156,14 +156,13 @@ isWannabeStar img backgroundIntensity x y pixelIntensity =
         ( \acc@(ds@DirectionState {..}, rayStep) testedRadius ->
             if mainOk && not brighterPixel
               then
-                let newDirs = map (\dir -> dir {intensity = pixelAtDefault 0 img (x + dir.dirX * testedRadius) (y + dir.dirY * testedRadius)}) $ directionsFromRayStep rayStep
-                 in fmap rayStepFromDirections $
-                      concentricCircles
-                        testedRadius
-                        backgroundIntensity
-                        pixelIntensity
-                        (ds {mainOk = False}, [])
-                        newDirs
+                let newDirs = rayStepFromDirections $ map (\dir -> dir {intensity = pixelAtDefault 0 img (x + dir.dirX * testedRadius) (y + dir.dirY * testedRadius)}) $ directionsFromRayStep rayStep
+                 in concentricCircles
+                      testedRadius
+                      backgroundIntensity
+                      pixelIntensity
+                      (ds {mainOk = False})
+                      newDirs
               else acc
         )
         (initialDirectionState, directions)
