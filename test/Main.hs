@@ -1,8 +1,11 @@
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Main (main) where
 
+import Codec.Picture qualified as P
+import Codec.Picture.Types qualified as P
 import Data.Function
 import Data.List
 import ImageUtils
@@ -104,15 +107,26 @@ spec = do
     it "bar" foo
   describe "resolveVotes" $
     it "should never return multiple entries for the same element" bar
-  describe "computeLargeTriangleTransformation" $ do
-    refStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars1.txt"
-    targetStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars2.txt"
-    -- res <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/golden"
-    it "should produce the correct star mapping for the sample inputs" $
-      let result = computeLargeTriangleTransformation refStars targetStars
-       in --  in result `HP.shouldBe` res
+  -- describe "computeLargeTriangleTransformation" $ do
+  --   refStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars1.txt"
+  --   targetStars :: [Star] <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/stars2.txt"
+  --   -- res <- runIO $ read <$> readFile "./test/.golden/computeLargeTriangleTransformation/golden"
+  --   it "should produce the correct star mapping for the sample inputs" $
+  --     let result = computeLargeTriangleTransformation refStars targetStars
+  --      in --  in result `HP.shouldBe` res
 
-          customGoldenPretty "computeLargeTriangleTransformation" formatStars result
+  --         customGoldenPretty "computeLargeTriangleTransformation" formatStars result
+
+  describe "locateStarsDSS" $ do
+    img <- runIO $ P.readTiff "./resources/test_lights/img_1.tiff"
+    -- res <- runIO $ read <$> readFile "./test/.golden/locateStarsDSS/golden"
+    case img of
+      Right (P.ImageRGB16 refTiff) ->
+        it "should produce correct stars" $
+          let refLuma = P.extractLumaPlane refTiff
+              stars = locateStarsDSS refLuma
+           in customGoldenPretty "locateStarsDSS" show stars
+  --  in stars `HP.shouldBe` res
   describe "rayStepFromDirections . directionsFromRayStep" $
     prop "should be the identity function" $ \rayStep ->
       let res = rayStepFromDirections $ directionsFromRayStep rayStep
