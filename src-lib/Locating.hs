@@ -16,6 +16,7 @@ import Data.Maybe
 import Data.Set qualified as Set
 import Data.Vector.Storable qualified as VS
 import Data.Word
+import Debug.Trace (traceShowId)
 import ImageUtils
 import System.Random
 import Types
@@ -187,9 +188,8 @@ generateWannabe x y radiusDelta pds =
             rs.southEast.pdRadius - rs.northWest.pdRadius,
             rs.southWest.pdRadius - rs.northWest.pdRadius
           ]
-
-      meanRadius1 = (/ 4) $ fromIntegral $ sum $ map (.radius) $ take 4 pds
-      meanRadius2 = (* sqrt 2) . (/ 4) $ fromIntegral $ sum $ map (.radius) $ drop 4 pds
+      meanRadius1 = (/ 4) $ fromIntegral $ sum $ map (.pdRadius) [rs.north, rs.east, rs.south, rs.west]
+      meanRadius2 = (* sqrt 2) . (/ 4) $ fromIntegral $ sum $ map (.pdRadius) [rs.northEast, rs.southEast, rs.southWest, rs.northWest]
    in if wannabeStarOk
         then Just $ WannabeStar x y ((meanRadius1 + meanRadius2) / 2)
         else Nothing
