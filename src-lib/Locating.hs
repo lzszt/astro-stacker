@@ -104,15 +104,13 @@ data PixelDirection = PixelDirection
   }
   deriving (Show, Eq)
 
-mkPixelDirection :: Int -> Int -> PixelDirection
-mkPixelDirection dX dY =
-  PixelDirection
-    { intensity = 0,
-      radius = 0,
-      nrBrighterPixels = 0,
-      pxOk = 2,
-      dirX = dX,
-      dirY = dY
+mkPixelDirection :: PixelDirection'
+mkPixelDirection =
+  PixelDirection'
+    { pdIntensity = 0,
+      pdRadius = 0,
+      pdNrBrighterPixels = 0,
+      pdPxOk = 2
     }
 
 concentricCircles ::
@@ -150,30 +148,30 @@ concentricCircles testedRadius backgroundIntensity pixelIntensity =
                 restPds
       | otherwise = go (ds {brighterPixel = pd.nrBrighterPixels > 2 || ds.brighterPixel}, pd : pds) restPds
 
-isWannabeStar :: P.Image Word16 -> Word16 -> Int -> Int -> Word16 -> (DirectionState, [PixelDirection])
+isWannabeStar :: P.Image Word16 -> Word16 -> Int -> Int -> Word16 -> (DirectionState, RayStep PixelDirection')
 isWannabeStar img backgroundIntensity x y pixelIntensity =
-  let directions = map (uncurry mkPixelDirection) [(0, -1), (1, 0), (0, 1), (-1, 0), (1, -1), (1, 1), (-1, 1), (-1, -1)]
+  let directions = fmap (const mkPixelDirection) rayDirs
       testRadii = [1 .. maxStarSize]
    in foldl'
-        ( \acc@(ds@DirectionState {..}, dirs) testedRadius ->
+        ( \acc@(ds@DirectionState {..}, rayStep) testedRadius ->
             if mainOk && not brighterPixel
               then
-                let newDirs = map (\dir -> dir {intensity = pixelAtDefault 0 img (x + dir.dirX * testedRadius) (y + dir.dirY * testedRadius)}) dirs
-                 in concentricCircles
-                      testedRadius
-                      backgroundIntensity
-                      pixelIntensity
-                      (ds {mainOk = False}, [])
-                      newDirs
+                let newDirs = map (\dir -> dir {intensity = pixelAtDefault 0 img (x + dir.dirX * testedRadius) (y + dir.dirY * testedRadius)}) $ directionsFromRayStep rayStep
+                 in fmap rayStepFromDirections $
+                      concentricCircles
+                        testedRadius
+                        backgroundIntensity
+                        pixelIntensity
+                        (ds {mainOk = False}, [])
+                        newDirs
               else acc
         )
         (initialDirectionState, directions)
         testRadii
 
-generateWannabe :: Int -> Int -> Int -> [PixelDirection] -> Maybe WannabeStar
-generateWannabe x y radiusDelta pds =
-  let rs = rayStepFromDirections pds
-      wannabeStarOk =
+generateWannabe :: Int -> Int -> Int -> RayStep PixelDirection' -> Maybe WannabeStar
+generateWannabe x y radiusDelta rs =
+  let wannabeStarOk =
         all ((<= radiusDelta) . abs) $
           [ rs.north.pdRadius - rs.east.pdRadius,
             rs.north.pdRadius - rs.south.pdRadius,
