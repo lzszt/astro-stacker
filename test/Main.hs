@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -21,7 +22,8 @@ import Types
 
 main :: IO ()
 main = hspec $ do
-  spec
+  -- spec
+  alignmentSpec
 
 newtype StarList = StarList [Star]
   deriving (Show)
@@ -43,9 +45,9 @@ instance Arbitrary Position where
     y <- getNonNegative <$> arbitrary
     pure $ Position {x = x, y = y}
 
--- shrink (Position x y) =
---   (flip Position y <$> shrink x)
---     <> (Position x <$> shrink y)
+  shrink (Position x y) =
+    (flip Position y <$> shrink x)
+      <> (Position x <$> shrink y)
 
 instance Arbitrary Star where
   arbitrary = do
@@ -187,3 +189,44 @@ bar =
           (Star (Position 300 50) 3, Star (Position 300 50) 3)
         ]
    in resolveVotes 3 inp `shouldBe` expected
+
+newtype Angle = Angle {unAngle :: Double}
+  deriving (Show)
+
+instance Arbitrary Angle where
+  arbitrary = Angle <$> choose (0, 2 * pi)
+  shrink (Angle a) = Angle <$> shrink a
+
+instance Arbitrary Alignment where
+  arbitrary =
+    Alignment
+      <$> arbitrary
+      <*> arbitrary
+      <*> (unAngle <$> arbitrary)
+
+  shrink (Alignment offX offY rot) =
+    (Alignment offX offY . unAngle <$> shrink (Angle rot))
+      <> ((\y -> Alignment offX y rot) <$> shrink offY)
+      <> ((\x -> Alignment x offY rot) <$> shrink offX)
+
+alignmentSpec :: Spec
+alignmentSpec = do
+  describe "applyAlignment alignmentRef" $
+    prop "should be the identity" $ \pos ->
+      applyAlignment alignmentRef pos `shouldBe` pos
+  describe "rotating by a multiple of 2*pi" $
+    prop "should be the identity" $ \(Positive (n :: Int)) pos ->
+      rotate (2 * pi * fromIntegral n) pos `shouldBe` pos
+  describe "rotating by pi/2" $
+    it "should rotate (1,0) -> (0,1)" $
+      rotate (pi / 2) (Position 1 0) `shouldBe` Position 0 1
+  describe "rotate" $
+    prop "should not change distance from origin" $ \(Angle rot) pos ->
+      let distToOrigin = distanceSqr (Position 0 0)
+       in distToOrigin (rotate rot pos) `shouldBe` distToOrigin pos
+  describe "rotating (1,1) by 5.2rad" $
+    it "should result in" $
+      rotate 5.2 (Position 1 1) `shouldBe` Position 1 1
+  describe "reverseApplyAlignment . applyAlignment" $
+    prop "should be the identity" $ \alignment pos ->
+      reverseApplyAlignment alignment (applyAlignment alignment pos) `shouldBe` pos
