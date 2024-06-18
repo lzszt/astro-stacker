@@ -313,7 +313,7 @@ locateStarsDSS img@P.Image {..} =
         else []
 
 wannabeToStar :: WannabeStar -> Star
-wannabeToStar WannabeStar {..} = Star (Position posX posY) meanRadius
+wannabeToStar WannabeStar {..} = Star (Position (fromIntegral posX) (fromIntegral posY)) meanRadius
 
 circlePixels :: Double -> Map.Map Int (Set.Set Int)
 circlePixels r =
@@ -329,8 +329,8 @@ translateCircle x y = Map.mapKeys (+ x) . Map.map (Set.map (+ y))
 
 drawStars :: P.Image Word16 -> [Star] -> IO (P.Image P.PixelRGB16)
 drawStars img@P.Image {..} stars = do
-  let centers = sort $ map (\s -> (s.starPosition.x, s.starPosition.y)) stars
-      circles = Map.unionsWith Set.union $ map (\s -> translateCircle s.starPosition.x s.starPosition.y $ circlesPxs !! round s.starRadius) stars
+  let centers = sort $ map (\s -> (round s.starPosition.x, round s.starPosition.y)) stars
+      circles = Map.unionsWith Set.union $ map (\s -> translateCircle (round s.starPosition.x) (round s.starPosition.y) $ circlesPxs !! round s.starRadius) stars
   targetImg <- P.newMutableImage imageWidth imageHeight
   void $
     P.pixelFoldM
@@ -417,12 +417,12 @@ applyTransform alg img =
   P.generateImage generatePixel img.imageWidth img.imageHeight
   where
     generatePixel x' y' =
-      let Position {..} = applyAlignment alg $ Position x' y'
+      let Position {..} = applyAlignment alg $ Position (fromIntegral x') (fromIntegral y')
        in if 0 <= x
-            && x < img.imageWidth
+            && x < fromIntegral img.imageWidth
             && 0 <= y
-            && y < img.imageHeight
-            then P.pixelAt img x y
+            && y < fromIntegral img.imageHeight
+            then P.pixelAt img (round x) (round y)
             else P.PixelRGB16 0 0 0
 
 generateTestTiffs :: IO ()

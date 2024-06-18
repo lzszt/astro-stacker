@@ -8,8 +8,8 @@ import Codec.Picture qualified as P
 type Tiff = P.Image P.PixelRGB16
 
 data Alignment = Alignment
-  { offsetX :: Int,
-    offsetY :: Int,
+  { offsetX :: Double,
+    offsetY :: Double,
     rotation :: Double
   }
   deriving (Show, Read)
@@ -20,11 +20,9 @@ alignmentRef = Alignment 0 0 0
 rotate :: Double -> Position -> Position
 rotate 0 p = p
 rotate rotation Position {..} =
-  let x' = fromIntegral x
-      y' = fromIntegral y
-   in Position
-        (round $ x' * cos rotation - y' * sin rotation)
-        (round $ y' * cos rotation + x' * sin rotation)
+  Position
+    (x * cos rotation - y * sin rotation)
+    (y * cos rotation + x * sin rotation)
 
 applyAlignment :: Alignment -> Position -> Position
 applyAlignment Alignment {..}
@@ -49,8 +47,8 @@ data OuterCorners = OuterCorners
   deriving (Show)
 
 data Position = Position
-  { x :: Int,
-    y :: Int
+  { x :: Double,
+    y :: Double
   }
   deriving (Show, Read, Eq, Ord)
 
@@ -67,7 +65,7 @@ distance p1 p2 = sqrt $ distanceSqr p1 p2
 {-# INLINE distanceSqr #-}
 distanceSqr :: Position -> Position -> Double
 distanceSqr p1 p2 =
-  fromIntegral $ (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
+  (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
 
 data Star = Star
   { starPosition :: Position,

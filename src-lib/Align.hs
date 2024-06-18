@@ -68,94 +68,89 @@ data BilinearParameters = BilinearParameters
 transform :: BilinearParameters -> Position -> Position
 transform bp pt
   | bp.tType == TT_BICUBIC =
-      let x = fromIntegral pt.x / bp.xWidth
-          y = fromIntegral pt.y / bp.yWidth
+      let x = pt.x / bp.xWidth
+          y = pt.y / bp.yWidth
           x2 = x * x
           y2 = y * y
           x3 = x * x * x
           y3 = y * y * y
        in Position
             { x =
-                round $
-                  ( bp.a0
-                      + bp.a1 * x
-                      + bp.a2 * y
-                      + bp.a3 * x * y
-                      + bp.a4 * x2
-                      + bp.a5 * y2
-                      + bp.a6 * x2 * y
-                      + bp.a7 * x * y2
-                      + bp.a8 * x2 * y2
-                      + bp.a9 * x3
-                      + bp.a10 * y3
-                      + bp.a11 * x3 * y
-                      + bp.a12 * x * y3
-                      + bp.a13 * x3 * y2
-                      + bp.a14 * x2 * y3
-                      + bp.a15 * x3 * y3
-                  )
-                    * bp.xWidth,
+                ( bp.a0
+                    + bp.a1 * x
+                    + bp.a2 * y
+                    + bp.a3 * x * y
+                    + bp.a4 * x2
+                    + bp.a5 * y2
+                    + bp.a6 * x2 * y
+                    + bp.a7 * x * y2
+                    + bp.a8 * x2 * y2
+                    + bp.a9 * x3
+                    + bp.a10 * y3
+                    + bp.a11 * x3 * y
+                    + bp.a12 * x * y3
+                    + bp.a13 * x3 * y2
+                    + bp.a14 * x2 * y3
+                    + bp.a15 * x3 * y3
+                )
+                  * bp.xWidth,
               y =
-                round $
-                  ( bp.b0
-                      + bp.b1 * x
-                      + bp.b2 * y
-                      + bp.b3 * x * y
-                      + bp.b4 * x2
-                      + bp.b5 * y2
-                      + bp.b6 * x2 * y
-                      + bp.b7 * x * y2
-                      + bp.b8 * x2 * y2
-                      + bp.b9 * x3
-                      + bp.b10 * y3
-                      + bp.b11 * x3 * y
-                      + bp.b12 * x * y3
-                      + bp.b13 * x3 * y2
-                      + bp.b14 * x2 * y3
-                      + bp.b15 * x3 * y3
-                  )
-                    * bp.yWidth
+                ( bp.b0
+                    + bp.b1 * x
+                    + bp.b2 * y
+                    + bp.b3 * x * y
+                    + bp.b4 * x2
+                    + bp.b5 * y2
+                    + bp.b6 * x2 * y
+                    + bp.b7 * x * y2
+                    + bp.b8 * x2 * y2
+                    + bp.b9 * x3
+                    + bp.b10 * y3
+                    + bp.b11 * x3 * y
+                    + bp.b12 * x * y3
+                    + bp.b13 * x3 * y2
+                    + bp.b14 * x2 * y3
+                    + bp.b15 * x3 * y3
+                )
+                  * bp.yWidth
             }
   | bp.tType == TT_BISQUARED =
-      let x = fromIntegral pt.x / bp.xWidth
-          y = fromIntegral pt.y / bp.yWidth
+      let x = pt.x / bp.xWidth
+          y = pt.y / bp.yWidth
           x2 = x * x
           y2 = y * y
        in Position
             { x =
-                round $
-                  ( bp.a0
-                      + bp.a1 * x
-                      + bp.a2 * y
-                      + bp.a3 * x * y
-                      + bp.a4 * x2
-                      + bp.a5 * y2
-                      + bp.a6 * x2 * y
-                      + bp.a7 * x * y2
-                      + bp.a8 * x2 * y2
-                  )
-                    * bp.xWidth,
+                ( bp.a0
+                    + bp.a1 * x
+                    + bp.a2 * y
+                    + bp.a3 * x * y
+                    + bp.a4 * x2
+                    + bp.a5 * y2
+                    + bp.a6 * x2 * y
+                    + bp.a7 * x * y2
+                    + bp.a8 * x2 * y2
+                )
+                  * bp.xWidth,
               y =
-                round $
-                  ( bp.b0
-                      + bp.b1 * x
-                      + bp.b2 * y
-                      + bp.b3 * x * y
-                      + bp.b4 * x2
-                      + bp.b5 * y2
-                      + bp.b6 * x2 * y
-                      + bp.b7 * x * y2
-                      + bp.b8 * x2 * y2
-                  )
-                    * bp.yWidth
+                ( bp.b0
+                    + bp.b1 * x
+                    + bp.b2 * y
+                    + bp.b3 * x * y
+                    + bp.b4 * x2
+                    + bp.b5 * y2
+                    + bp.b6 * x2 * y
+                    + bp.b7 * x * y2
+                    + bp.b8 * x2 * y2
+                )
+                  * bp.yWidth
             }
   | otherwise =
-      let x = fromIntegral pt.x / bp.xWidth
-          y = fromIntegral pt.y / bp.yWidth
+      let x = pt.x / bp.xWidth
+          y = pt.y / bp.yWidth
        in Position
-            { -- FIXME (felix): Should this be rounding here?
-              x = round $ (bp.a0 + bp.a1 * x + bp.a2 * y + bp.a3 * x * y) * bp.xWidth,
-              y = round $ (bp.b0 + bp.b1 * x + bp.b2 * y + bp.b3 * x * y) * bp.yWidth
+            { x = (bp.a0 + bp.a1 * x + bp.a2 * y + bp.a3 * x * y) * bp.xWidth,
+              y = (bp.b0 + bp.b1 * x + bp.b2 * y + bp.b3 * x * y) * bp.yWidth
             }
 
 validateTransformation :: BilinearParameters -> [(Star, Star)] -> Double
@@ -282,4 +277,4 @@ positionListToVector ps =
   LA.matrix (length ps) $
     concat $
       transpose $
-        map (\p -> map fromIntegral [p.x, p.y]) ps
+        map (\p -> [p.x, p.y]) ps

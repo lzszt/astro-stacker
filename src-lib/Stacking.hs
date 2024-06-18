@@ -61,7 +61,7 @@ stackImages images@((P.Image w h _, Alignment offX offY rot) : sources) =
 
     updateCorners :: OuterCorners -> Int -> Int -> Alignment -> OuterCorners
     updateCorners cor height width alg =
-      let imageCorners = map (uncurry Position) [(0, 0), (0, height), (width, 0), (width, height)]
+      let imageCorners = map (uncurry Position) [(0, 0), (0, fromIntegral height), (fromIntegral width, 0), (fromIntegral width, fromIntegral height)]
 
           alignedImageCorners = map (applyAlignment alg) imageCorners
        in foldl' applyCorner cor alignedImageCorners
@@ -74,18 +74,18 @@ stackImages images@((P.Image w h _, Alignment offX offY rot) : sources) =
         }
       Position {..} =
         OuterCorners
-          { upperLeftCorner = (min ulX x, min ulY y),
-            lowerRightCorner = (max lrX x, max lrY y)
+          { upperLeftCorner = (min ulX (floor x), min ulY (floor y)),
+            lowerRightCorner = (max lrX (ceiling x), max lrY (ceiling y))
           }
 
     lookupPixel :: (Int, Int) -> Int -> Int -> (Tiff, Alignment) -> Maybe P.PixelRGB16
     lookupPixel (ulX, ulY) outX outY (img@P.Image {..}, Alignment offX offY rot) =
-      let Position {..} = rotate (negate rot) $ Position (outX + ulX - offX) (outY + ulY - offY)
+      let Position {..} = rotate (negate rot) $ Position (fromIntegral (outX + ulX) - offX) (fromIntegral (outY + ulY) - offY)
        in if x >= 0
-            && x < imageWidth
+            && x < fromIntegral imageWidth
             && y >= 0
-            && y < imageHeight
-            then Just $ P.pixelAt img x y
+            && y < fromIntegral imageHeight
+            then Just $ P.pixelAt img (round x) (round y)
             else Nothing
 
 starLocationApplyAlignment :: Alignment -> Star -> Star

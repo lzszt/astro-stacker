@@ -57,10 +57,10 @@ instance Arbitrary Star where
 
 -- shrink (Star position size) = flip Star size <$> shrink position
 
-applyOffset :: (Int, Int) -> Star -> Star
-applyOffset (offX, offY) s = s {starPosition = translate s.starPosition}
-  where
-    translate (Position x y) = Position (x + offX) (y + offY)
+-- applyOffset :: (Int, Int) -> Star -> Star
+-- applyOffset (offX, offY) s = s {starPosition = translate s.starPosition}
+--   where
+--     translate (Position x y) = Position (x + offX) (y + offY)
 
 customGoldenPretty :: (Show str, Read str) => FilePath -> (str -> String) -> str -> G.Golden str
 customGoldenPretty name fmt content =
@@ -209,24 +209,29 @@ instance Arbitrary Alignment where
       <> ((\y -> Alignment offX y rot) <$> shrink offY)
       <> ((\x -> Alignment x offY rot) <$> shrink offX)
 
+epsilon :: Double
+epsilon = 0.000001
+
+positionsEqual :: Position -> Position -> Bool
+positionsEqual (Position x1 y1) (Position x2 y2) =
+  abs (x1 - x2) <= epsilon
+    && abs (y1 - y2) <= epsilon
+
 alignmentSpec :: Spec
 alignmentSpec = do
   describe "applyAlignment alignmentRef" $
     prop "should be the identity" $ \pos ->
-      applyAlignment alignmentRef pos `shouldBe` pos
+      (applyAlignment alignmentRef pos, pos) `shouldSatisfy` uncurry positionsEqual
   describe "rotating by a multiple of 2*pi" $
     prop "should be the identity" $ \(Positive (n :: Int)) pos ->
-      rotate (2 * pi * fromIntegral n) pos `shouldBe` pos
+      (rotate (2 * pi * fromIntegral n) pos, pos) `shouldSatisfy` uncurry positionsEqual
   describe "rotating by pi/2" $
     it "should rotate (1,0) -> (0,1)" $
-      rotate (pi / 2) (Position 1 0) `shouldBe` Position 0 1
+      (rotate (pi / 2) (Position 1 0), Position 0 1) `shouldSatisfy` uncurry positionsEqual
   describe "rotate" $
     prop "should not change distance from origin" $ \(Angle rot) pos ->
       let distToOrigin = distanceSqr (Position 0 0)
-       in distToOrigin (rotate rot pos) `shouldBe` distToOrigin pos
-  describe "rotating (1,1) by 5.2rad" $
-    it "should result in" $
-      rotate 5.2 (Position 1 1) `shouldBe` Position 1 1
+       in (distToOrigin (rotate rot pos), distToOrigin pos) `shouldSatisfy` uncurry (\x y -> abs (x - y) <= epsilon)
   describe "reverseApplyAlignment . applyAlignment" $
     prop "should be the identity" $ \alignment pos ->
-      reverseApplyAlignment alignment (applyAlignment alignment pos) `shouldBe` pos
+      (reverseApplyAlignment alignment (applyAlignment alignment pos), pos) `shouldSatisfy` uncurry positionsEqual
