@@ -16,7 +16,7 @@ import Data.Maybe
 import Data.Set qualified as Set
 import Data.Vector.Storable qualified as VS
 import Data.Word
-import Debug.Trace (traceShowId)
+import Debug.Trace
 import ImageUtils
 import System.Random
 import Types
@@ -427,14 +427,14 @@ applyTransform alg img =
 
 generateTestTiffs :: IO ()
 generateTestTiffs = do
-  let n = 100
+  let n = 10
   Right (P.ImageRGB8 original) <- P.readTiff "./PIA17005.tiff"
 
-  withTransforms <- generateTransforms [1 .. n]
+  withTransforms <- ((0, alignmentRef) :) <$> generateTransforms [1 .. n]
   mapM_ (print . snd) withTransforms
 
   mapM_
-    ( \(i, transform) ->
+    ( \(i, transform) -> do
         P.writeTiff ("./resources/test_lights/img_" <> show i <> ".tiff") $
           applyTransform transform $
             P.pixelMap
@@ -445,6 +445,8 @@ generateTestTiffs = do
                     (pixel8ToPixel16 b)
               )
               original
+        writeFile ("./resources/test_lights/align_" <> show i <> ".txt") $
+          show transform
     )
     withTransforms
 
