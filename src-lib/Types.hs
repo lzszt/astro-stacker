@@ -12,7 +12,10 @@ data Alignment = Alignment
     offsetY :: Int,
     rotation :: Double
   }
-  deriving (Show)
+  deriving (Show, Read)
+
+alignmentRef :: Alignment
+alignmentRef = Alignment 0 0 0
 
 rotate :: Double -> Position -> Position
 rotate 0 p = p
@@ -30,6 +33,14 @@ applyAlignment Alignment {..}
   where
     translate :: Position -> Position
     translate Position {..} = Position (x + offsetX) (y + offsetY)
+
+reverseApplyAlignment :: Alignment -> Position -> Position
+reverseApplyAlignment Alignment {..}
+  | rotation == 0 = translate
+  | otherwise = rotate (-rotation) . translate
+  where
+    translate :: Position -> Position
+    translate Position {..} = Position (x - offsetX) (y - offsetY)
 
 data OuterCorners = OuterCorners
   { upperLeftCorner :: (Int, Int),
