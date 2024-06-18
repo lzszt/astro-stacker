@@ -11,7 +11,9 @@ import Debug.Trace
 import Types
 
 matchStars :: [RefStar] -> [TargetStar] -> [(RefStar, TargetStar)]
-matchStars = undefined
+matchStars refs tgts =
+  let possibleMatchings = computeLargeTriangleTransformation refs tgts
+   in undefined
 
 computeStarDistances :: (Located a, Ord a) => [a] -> [(Unordered a, Double)]
 computeStarDistances = sortOn (Down . snd) . go
@@ -25,7 +27,7 @@ calcStarDistance :: (Located a1, Located a2) => a1 -> a2 -> Double
 calcStarDistance s1 s2 = distanceSqr (position s1) (position s2)
 
 maxRadiusDelta :: Double
-maxRadiusDelta = 2
+maxRadiusDelta = 1
 
 getStarDist :: (Ord p) => p -> p -> M.Map (Unordered p) b -> Maybe b
 getStarDist s1 s2 dists =
@@ -143,3 +145,33 @@ resolveVotes nTgtStars votes =
   let minNrVotes = maybe 1 (max 1 . snd) $ votes !? (nTgtStars * 2 - 1)
    in map fst $ takeWhile ((>= minNrVotes) . snd) votes
 
+makeHist :: [Double] -> [(Int, Int)]
+makeHist =
+  M.toAscList
+    . foldl'
+      ( \acc x ->
+          M.alter
+            (Just . maybe 1 (+ 1))
+            (floor x)
+            acc
+      )
+      M.empty
+
+printHist :: Bool -> [(Int, Int)] -> IO ()
+printHist sparse cols' = putStrLn $ unlines $ transpose $ reverse $ transpose [printCol $ fromMaybe (i, 0) $ find ((== i) . fst) cols | i <- indices]
+  where
+    indices = if sparse then map fst cols else [minX .. maxX]
+    cols = map (\(i, h) -> (i, round @Double @Int $ fromIntegral h / maxColHeight * fromIntegral maxDiagramHeight)) cols'
+    maxColHeight = fromIntegral $ maximum $ map snd cols'
+    minX = traceShowId $ minimum (map fst cols)
+    maxX = traceShowId $ maximum (map fst cols)
+
+    maxDiagramHeight = 250
+
+    pad (i, height) =
+      let index = show i
+       in if height > length index
+            then replicate (maxDiagramHeight - height) ' ' <> replicate (height - length index) '#' <> reverse index
+            else replicate (maxDiagramHeight - height) ' ' <> replicate height '#'
+
+    printCol height = pad height
