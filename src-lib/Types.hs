@@ -46,11 +46,13 @@ data OuterCorners = OuterCorners
   }
   deriving (Show)
 
-data Position = Position
-  { x :: Double,
-    y :: Double
+data Position' a = Position
+  { x :: a,
+    y :: a
   }
-  deriving (Show, Read, Eq, Ord)
+  deriving (Show, Read, Eq, Ord, Functor)
+
+type Position = Position' Double
 
 class Located a where
   position :: a -> Position

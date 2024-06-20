@@ -417,12 +417,12 @@ applyTransform alg img =
   P.generateImage generatePixel img.imageWidth img.imageHeight
   where
     generatePixel x' y' =
-      let Position {..} = applyAlignment alg $ Position (fromIntegral x') (fromIntegral y')
+      let Position {..} = fmap round $ applyAlignment alg $ Position (fromIntegral x') (fromIntegral y')
        in if 0 <= x
-            && x < fromIntegral img.imageWidth
+            && x < img.imageWidth
             && 0 <= y
-            && y < fromIntegral img.imageHeight
-            then P.pixelAt img (round x) (round y)
+            && y < img.imageHeight
+            then P.pixelAt img x y
             else P.PixelRGB16 0 0 0
 
 generateTestTiffs :: IO ()
