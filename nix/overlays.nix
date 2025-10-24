@@ -28,6 +28,6 @@ let
     };
   };
 in [
-  (final: prev: { haskellPackages = prev.haskell.packages.ghc98; })
+  # (final: prev: { haskellPackages = prev.haskell.packages.ghc98; })
   customHaskellPackages
 ]

@@ -1,74 +1,103 @@
-cabal-version:      3.0
-name:               astro-stacker
-version:            0.1.0.0
+cabal-version:   3.0
+name:            astro-stacker
+version:         0.1.0.0
+
 -- synopsis:
 -- description:
-license:            GPL-3.0-or-later
-license-file:       LICENSE
-author:             Felix Leitz
-maintainer:         felix.leitz92@gmail.com
+license:         GPL-3.0-or-later
+license-file:    LICENSE
+author:          Felix Leitz
+maintainer:      felix.leitz92@gmail.com
+
 -- copyright:
-build-type:         Simple
-extra-doc-files:    CHANGELOG.md
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
+
 -- extra-source-files:
 
 common options
-  ghc-options:       -Wall
-                     -threaded
-                     -fspecialise-aggressively
-                     -O2              
+  ghc-options: -Wall -threaded -fspecialise-aggressively -O2
 
 library
-    import:           options
-    exposed-modules:  AstroStacker
-                    , Align
-                    , Config
-                    , Locating
-                    , Stacking
-                    , Types
-                    , ImageUtils
-                    , Matching
-    -- other-modules:
-    -- other-extensions:
-    build-depends:    base
-                    , vector
-                    , filepath
-                    , directory
-                    , time
-                    , JuicyPixels
-                    , async
-                    , containers
-                    , optparse-applicative
-                    , random
-                    , hmatrix
-    hs-source-dirs:   src-lib
-    default-language: GHC2021
+  import:           options
+  exposed-modules:
+    Align
+    AstroStacker
+    Config
+    DSSParser
+    ImageUtils
+    Locating
+    Matching
+    Stacking
+    Types
+
+  -- other-modules:
+  -- other-extensions:
+  build-depends:
+    , async
+    , base
+    , containers
+    , directory
+    , filepath
+    , hmatrix
+    , JuicyPixels
+    , megaparsec
+    , optparse-applicative
+    , random
+    , text
+    , time
+    , vector
+
+  hs-source-dirs:   src-lib
+  default-language: GHC2021
 
 executable astro-stacker
-    import:           options
-    main-is:          Main.hs
-    -- other-modules:
-    -- other-extensions:
-    build-depends:
-        base
-      , astro-stacker
-      , containers
-      , async
-    hs-source-dirs:   app
-    default-language: GHC2021
+  import:           options
+  main-is:          Main.hs
+
+  -- other-modules:
+  -- other-extensions:
+  build-depends:
+    , astro-stacker
+    , async
+    , base
+    , containers
+
+  hs-source-dirs:   app
+  default-language: GHC2021
+
+executable gui
+  import:           options
+  main-is:          Main.hs
+
+  -- other-modules:
+  -- other-extensions:
+  build-depends:
+    , base
+    , astro-stacker
+    , gi-gtk4
+    , haskell-gi-base
+    , text
+    , gi-gio
+
+  hs-source-dirs:   gui
+  default-language: GHC2024
 
 test-suite astro-stacker-test
-    import:           options
-    default-language: GHC2021
-    -- other-modules:
-    -- other-extensions:
-    type:             exitcode-stdio-1.0
-    hs-source-dirs:   test
-    main-is:          Main.hs
-    build-depends:
-        base
-      , astro-stacker
-      , hspec 
-      , hspec-golden
-      , QuickCheck
-      , filepath
+  import:           options
+  default-language: GHC2021
+
+  -- other-modules:
+  -- other-extensions:
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , astro-stacker
+    , base
+    , filepath
+    , hspec
+    , hspec-expectations-pretty-diff
+    , hspec-golden
+    , JuicyPixels
+    , QuickCheck

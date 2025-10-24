@@ -56,9 +56,11 @@ type Position = Position' Double
 
 class Located a where
   position :: a -> Position
+  updatePosition :: (Position -> Position) -> a -> a
 
 instance Located Position where
   position = id
+  updatePosition = id
 
 {-# INLINE distance #-}
 distance :: Position -> Position -> Double
@@ -77,6 +79,7 @@ data Star = Star
 
 instance Located Star where
   position = starPosition
+  updatePosition f s = s {starPosition = f s.starPosition}
 
 newtype RefStar = RefStar {unRef :: Star}
   deriving (Eq, Ord, Show, Located, IsStar)

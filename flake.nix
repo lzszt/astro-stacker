@@ -4,17 +4,20 @@
     # nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
-  outputs = inputs@{ self, flake-utils, ... }:
+  outputs =
+    inputs@{ self, flake-utils, ... }:
     let
       pkgs = import ./nix/pkgs.nix {
         inherit inputs;
         system = "x86_64-linux";
       };
       packageName = "astro-stacker";
-    in {
+    in
+    {
       packages.x86_64-linux.${packageName} = pkgs.haskellPackages.astro-stacker;
-      defaultPackage.x86_64-linux = pkgs.haskell.lib.justStaticExecutables
-        self.packages.x86_64-linux.${packageName};
+      defaultPackage.x86_64-linux =
+        pkgs.haskell.lib.justStaticExecutables
+          self.packages.x86_64-linux.${packageName};
       devShells.x86_64-linux = {
         default = pkgs.haskellPackages.shellFor {
           packages = p: [ p.astro-stacker ];
@@ -26,6 +29,8 @@
             haskellPackages.haskell-language-server
             haskellPackages.fourmolu
             haskellPackages.profiteur
+            haskellPackages.cabal-fmt
+            gimp
           ];
         };
       };

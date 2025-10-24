@@ -7,6 +7,7 @@ module Main (main) where
 
 import Codec.Picture qualified as P
 import Codec.Picture.Types qualified as P
+import Data.Bifunctor (Bifunctor (bimap))
 import Data.Function
 import Data.List
 import ImageUtils
@@ -24,6 +25,7 @@ main :: IO ()
 main = hspec $ do
   -- spec
   alignmentSpec
+  matchingSpec
 
 newtype StarList = StarList [Star]
   deriving (Show)
@@ -52,7 +54,7 @@ instance Arbitrary Position where
 instance Arbitrary Star where
   arbitrary = do
     pos <- arbitrary
-    size <- getPositive <$> arbitrary
+    size <- fromIntegral <$> choose (2, maxStarSize)
     pure $ Star pos size
 
 -- shrink (Star position size) = flip Star size <$> shrink position
@@ -235,3 +237,87 @@ alignmentSpec = do
   describe "reverseApplyAlignment . applyAlignment" $
     prop "should be the identity" $ \alignment pos ->
       (reverseApplyAlignment alignment (applyAlignment alignment pos), pos) `shouldSatisfy` uncurry positionsEqual
+
+data TaggedStar
+  = TaggedStar
+  { tag :: Int,
+    star :: Star
+  }
+  deriving (Eq, Ord, Show)
+
+-- instance Show TaggedStar where
+--   show = show . tag
+
+instance Located TaggedStar where
+  position :: TaggedStar -> Position
+  position = position . star
+
+  updatePosition :: (Position -> Position) -> TaggedStar -> TaggedStar
+  updatePosition f t = t {star = updatePosition f t.star}
+
+instance IsStar TaggedStar where
+  toStar = star
+
+data MatchingInput
+  = MatchingInput
+  { refStars :: [TaggedStar],
+    tgtStars :: [TaggedStar],
+    alignment :: Alignment
+  }
+  deriving (Show)
+
+toCloseToStar :: (Located a, IsStar b) => a -> b -> Bool
+toCloseToStar testStar refStar =
+  distance (position testStar) (toStar refStar).starPosition <= (toStar refStar).starRadius * radiusFactor
+
+arbitraryStars :: Int -> Gen [Star]
+arbitraryStars = go []
+  where
+    go !stars 0 = pure stars
+    go !stars !n = do
+      potentialNewStar <- scale ((*) (10000 `div` n)) arbitrary
+      if any (toCloseToStar potentialNewStar) stars
+        then go stars n
+        else go (potentialNewStar : stars) (n - 1)
+
+instance Arbitrary MatchingInput where
+  arbitrary = do
+    nStars <- pure 10 -- choose (10, 10)
+    allRefs <- zipWith TaggedStar [0 ..] <$> arbitraryStars nStars
+    alignment <- arbitrary
+    let allTgts = map (updatePosition (applyAlignment alignment)) allRefs
+
+    -- n <- getNonNegative <$> arbitrary
+    -- m <- getNonNegative <$> arbitrary
+
+    refs <- shuffle allRefs
+    tgts <- shuffle allTgts
+
+    pure $
+      MatchingInput
+        { refStars = refs,
+          tgtStars = tgts,
+          alignment = alignment
+        }
+
+sameTag :: (TaggedStar, TaggedStar) -> Bool
+sameTag = (uncurry (==) . bimap tag tag)
+
+matchingSpec :: Spec
+matchingSpec = do
+  describe "MatchingInput" $
+    prop "should not generate overlapping stars" $ \MatchingInput {..} ->
+      False
+
+-- and
+--   [ let interStarDistance = distance (position s1) (position s2)
+--      in interStarDistance > s1.star.starRadius
+--           && interStarDistance > s2.star.starRadius
+--     | s1 <- refStars,
+--       s2 <- refStars,
+--       s1.tag /= s2.tag
+--   ]
+
+-- describe "matching" $
+--   prop "should always identify the correct matching stars" $ \MatchingInput {..} ->
+--     computeLargeTriangleTransformation refStars tgtStars `shouldSatisfy` all sameTag

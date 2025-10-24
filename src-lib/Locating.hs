@@ -2,13 +2,17 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE Strict #-}
 {-# LANGUAGE TupleSections #-}
 
 module Locating where
 
 import Codec.Picture qualified as P
+
 import Codec.Picture.Types qualified as P
 import Control.Monad
+import DSSParser
+import Data.Bifunctor
 import Data.Bits
 import Data.List
 import Data.Map.Strict qualified as Map
@@ -28,7 +32,7 @@ flattenImage ::
   (P.Pixel a) =>
   P.Image a ->
   P.Image a
-flattenImage img@P.Image {..} =
+flattenImage img@P.Image{..} =
   P.pixelMap
     ( \p ->
         if p >= avgPixelValue
@@ -39,25 +43,25 @@ flattenImage img@P.Image {..} =
           else 0
     )
     img
-  where
-    pxCount = fromIntegral $ imageWidth * imageHeight
-    maxVal = fromIntegral @a @Double maxBound
-    avgPixelValue =
-      round $
-        P.pixelFold
-          ( \acc _x _y p ->
-              let p' = fromIntegral p
-               in if p' >= maxVal
-                    then acc
-                    else acc + p' / pxCount
-          )
-          0
-          img
+ where
+  pxCount = fromIntegral $ imageWidth * imageHeight
+  maxVal = fromIntegral @a @Double maxBound
+  avgPixelValue =
+    round $
+      P.pixelFold
+        ( \acc _x _y p ->
+            let p' = fromIntegral p
+             in if p' >= maxVal
+                  then acc
+                  else acc + p' / pxCount
+        )
+        0
+        img
 
 data WannabeStar = WannabeStar
-  { posX :: Int,
-    posY :: Int,
-    meanRadius :: Double
+  { posX :: Int
+  , posY :: Int
+  , meanRadius :: Double
   }
   deriving (Show, Eq, Ord)
 
@@ -66,51 +70,51 @@ radiusFactor :: Double
 radiusFactor = 2.35 / 1.5
 
 withinStar :: Int -> Int -> WannabeStar -> Bool
-withinStar x y WannabeStar {..} =
+withinStar x y WannabeStar{..} =
   distance <= meanRadius * radiusFactor
-  where
-    distance = sqrt $ fromIntegral $ (posX - x) ^ 2 + (posY - y) ^ 2
+ where
+  distance = sqrt $ fromIntegral $ (posX - x) ^ 2 + (posY - y) ^ 2
 
 data DirectionState = DirectionState
-  { brighterPixel :: Bool,
-    mainOk :: Bool,
-    maxRadius :: Int
+  { brighterPixel :: Bool
+  , mainOk :: Bool
+  , maxRadius :: Int
   }
   deriving (Show)
 
 initialDirectionState :: DirectionState
 initialDirectionState =
   DirectionState
-    { brighterPixel = False,
-      mainOk = True,
-      maxRadius = 0
+    { brighterPixel = False
+    , mainOk = True
+    , maxRadius = 0
     }
 
 data PixelDirection' = PixelDirection'
-  { pdIntensity :: Word16,
-    pdRadius :: Int,
-    pdNrBrighterPixels :: Int,
-    pdPxOk :: Int
+  { pdIntensity :: Word16
+  , pdRadius :: Int
+  , pdNrBrighterPixels :: Int
+  , pdPxOk :: Int
   }
   deriving (Show, Eq)
 
 data PixelDirection = PixelDirection
-  { intensity :: Word16,
-    radius :: Int,
-    nrBrighterPixels :: Int,
-    pxOk :: Int,
-    dirX :: Int,
-    dirY :: Int
+  { intensity :: Word16
+  , radius :: Int
+  , nrBrighterPixels :: Int
+  , pxOk :: Int
+  , dirX :: Int
+  , dirY :: Int
   }
   deriving (Show, Eq)
 
 mkPixelDirection :: PixelDirection'
 mkPixelDirection =
   PixelDirection'
-    { pdIntensity = 0,
-      pdRadius = 0,
-      pdNrBrighterPixels = 0,
-      pdPxOk = 2
+    { pdIntensity = 0
+    , pdRadius = 0
+    , pdNrBrighterPixels = 0
+    , pdPxOk = 2
     }
 
 concentricCircles ::
@@ -122,46 +126,46 @@ concentricCircles ::
   (DirectionState, RayStep PixelDirection')
 concentricCircles testedRadius backgroundIntensity pixelIntensity state =
   fmap rayStepFromDirections . go (state, []) . directionsFromRayStep
-  where
-    go acc [] = acc
-    go (ds@DirectionState {..}, pds) (pd : restPds)
-      | brighterPixel = (ds, pd : pds <> restPds)
-      | pd.pxOk > 0 =
-          let (newDS, newPd) =
-                if pd.intensity - backgroundIntensity < (pixelIntensity - backgroundIntensity) `shiftR` 2
-                  then
-                    ( ds {maxRadius = max maxRadius testedRadius},
-                      pd {radius = testedRadius, pxOk = pd.pxOk - 1}
-                    )
-                  else
-                    if fromIntegral @_ @Double pd.intensity > 1.05 * fromIntegral pixelIntensity
-                      then (ds {brighterPixel = True}, pd)
-                      else
-                        if pd.intensity > pixelIntensity
-                          then (ds, pd {nrBrighterPixels = pd.nrBrighterPixels + 1})
-                          else (ds, pd)
-           in go
-                ( if newPd.pxOk > 0
-                    then (newDS {mainOk = True}, newPd : pds)
-                    else (newDS, newPd : pds)
-                )
-                restPds
-      | otherwise = go (ds {brighterPixel = pd.nrBrighterPixels > 2 || ds.brighterPixel}, pd : pds) restPds
+ where
+  go acc [] = acc
+  go (ds@DirectionState{..}, pds) (pd : restPds)
+    | brighterPixel = (ds, pd : pds <> restPds)
+    | pd.pxOk > 0 =
+        let (newDS, newPd) =
+              if pd.intensity - backgroundIntensity < (pixelIntensity - backgroundIntensity) `shiftR` 2
+                then
+                  ( ds{maxRadius = max maxRadius testedRadius}
+                  , pd{radius = testedRadius, pxOk = pd.pxOk - 1}
+                  )
+                else
+                  if fromIntegral @_ @Double pd.intensity > 1.05 * fromIntegral pixelIntensity
+                    then (ds{brighterPixel = True}, pd)
+                    else
+                      if pd.intensity > pixelIntensity
+                        then (ds, pd{nrBrighterPixels = pd.nrBrighterPixels + 1})
+                        else (ds, pd)
+         in go
+              ( if newPd.pxOk > 0
+                  then (newDS{mainOk = True}, newPd : pds)
+                  else (newDS, newPd : pds)
+              )
+              restPds
+    | otherwise = go (ds{brighterPixel = pd.nrBrighterPixels > 2 || ds.brighterPixel}, pd : pds) restPds
 
 isWannabeStar :: P.Image Word16 -> Word16 -> Int -> Int -> Word16 -> (DirectionState, RayStep PixelDirection')
 isWannabeStar img backgroundIntensity x y pixelIntensity =
   let directions = fmap (const mkPixelDirection) rayDirs
       testRadii = [1 .. maxStarSize]
    in foldl'
-        ( \acc@(ds@DirectionState {..}, rayStep) testedRadius ->
+        ( \acc@(ds@DirectionState{..}, rayStep) testedRadius ->
             if mainOk && not brighterPixel
               then
-                let newDirs = mapRayStep (\(dirX, dirY) dir -> dir {pdIntensity = pixelAtDefault 0 img (x + dirX * testedRadius) (y + dirY * testedRadius)}) rayStep
+                let newDirs = mapRayStep (\(dirX, dirY) dir -> dir{pdIntensity = pixelAtDefault 0 img (x + dirX * testedRadius) (y + dirY * testedRadius)}) rayStep
                  in concentricCircles
                       testedRadius
                       backgroundIntensity
                       pixelIntensity
-                      (ds {mainOk = False})
+                      (ds{mainOk = False})
                       newDirs
               else acc
         )
@@ -172,18 +176,18 @@ generateWannabe :: Int -> Int -> Int -> RayStep PixelDirection' -> Maybe Wannabe
 generateWannabe x y radiusDelta rs =
   let wannabeStarOk =
         all ((<= radiusDelta) . abs) $
-          [ rs.north.pdRadius - rs.east.pdRadius,
-            rs.north.pdRadius - rs.south.pdRadius,
-            rs.north.pdRadius - rs.west.pdRadius,
-            rs.east.pdRadius - rs.south.pdRadius,
-            rs.east.pdRadius - rs.west.pdRadius,
-            rs.south.pdRadius - rs.west.pdRadius,
-            rs.northEast.pdRadius - rs.southEast.pdRadius,
-            rs.northEast.pdRadius - rs.southWest.pdRadius,
-            rs.northEast.pdRadius - rs.northWest.pdRadius,
-            rs.southEast.pdRadius - rs.southWest.pdRadius,
-            rs.southEast.pdRadius - rs.northWest.pdRadius,
-            rs.southWest.pdRadius - rs.northWest.pdRadius
+          [ rs.north.pdRadius - rs.east.pdRadius
+          , rs.north.pdRadius - rs.south.pdRadius
+          , rs.north.pdRadius - rs.west.pdRadius
+          , rs.east.pdRadius - rs.south.pdRadius
+          , rs.east.pdRadius - rs.west.pdRadius
+          , rs.south.pdRadius - rs.west.pdRadius
+          , rs.northEast.pdRadius - rs.southEast.pdRadius
+          , rs.northEast.pdRadius - rs.southWest.pdRadius
+          , rs.northEast.pdRadius - rs.northWest.pdRadius
+          , rs.southEast.pdRadius - rs.southWest.pdRadius
+          , rs.southEast.pdRadius - rs.northWest.pdRadius
+          , rs.southWest.pdRadius - rs.northWest.pdRadius
           ]
       meanRadius1 = (/ 4) $ fromIntegral $ sum $ map (.pdRadius) [rs.north, rs.east, rs.south, rs.west]
       meanRadius2 = (* sqrt 2) . (/ 4) $ fromIntegral $ sum $ map (.pdRadius) [rs.northEast, rs.southEast, rs.southWest, rs.northWest]
@@ -196,10 +200,10 @@ rayStepFromDirections pds =
   fmap
     ( \pd ->
         PixelDirection'
-          { pdIntensity = pd.intensity,
-            pdRadius = pd.radius,
-            pdNrBrighterPixels = pd.nrBrighterPixels,
-            pdPxOk = pd.pxOk
+          { pdIntensity = pd.intensity
+          , pdRadius = pd.radius
+          , pdNrBrighterPixels = pd.nrBrighterPixels
+          , pdPxOk = pd.pxOk
           }
     )
     $ fmap
@@ -213,12 +217,12 @@ directionsFromRayStep rs =
   fmap
     ( \((dirX, dirY), pd) ->
         PixelDirection
-          { intensity = pd.pdIntensity,
-            radius = pd.pdRadius,
-            nrBrighterPixels = pd.pdNrBrighterPixels,
-            pxOk = pd.pdPxOk,
-            dirX = dirX,
-            dirY = dirY
+          { intensity = pd.pdIntensity
+          , radius = pd.pdRadius
+          , nrBrighterPixels = pd.pdNrBrighterPixels
+          , pxOk = pd.pdPxOk
+          , dirX = dirX
+          , dirY = dirY
           }
     )
     $ zip
@@ -277,7 +281,7 @@ accumulateTill cutoffSamples =
     . Map.toAscList
 
 locateStarsDSS :: P.Image Word16 -> [Star]
-locateStarsDSS img@P.Image {..} =
+locateStarsDSS img@P.Image{..} =
   let histogram = intensityHistogram img
       maxIntensity = fst $ Map.findMax histogram
       countHalfValues = fromIntegral $ ((imageHeight - 1) * (imageWidth - 1)) `div` 2
@@ -298,7 +302,7 @@ locateStarsDSS img@P.Image {..} =
                               | pixelIntensity < intensityThreshold -> wannabeStars
                               | isWithinStar x y wannabeStars -> wannabeStars
                               | otherwise ->
-                                  let (DirectionState {..}, pds) = isWannabeStar img background x y pixelIntensity
+                                  let (DirectionState{..}, pds) = isWannabeStar img background x y pixelIntensity
                                    in if not mainOk && not brighterPixel && maxRadius > 2
                                         then case generateWannabe x y radiusDelta pds of
                                           Nothing -> wannabeStars
@@ -313,14 +317,14 @@ locateStarsDSS img@P.Image {..} =
         else []
 
 wannabeToStar :: WannabeStar -> Star
-wannabeToStar WannabeStar {..} = Star (Position (fromIntegral posX) (fromIntegral posY)) meanRadius
+wannabeToStar WannabeStar{..} = Star (Position (fromIntegral posX) (fromIntegral posY)) meanRadius
 
 circlePixels :: Double -> Map.Map Int (Set.Set Int)
 circlePixels r =
   Map.fromListWith
     Set.union
     [ (round (sin angle * r), Set.singleton $ round (cos angle * r))
-      | angle <- map (\a -> a / 180 * pi) [0, 5 .. 360]
+    | angle <- map (\a -> a / 180 * pi) [0, 5 .. 360]
     ]
 
 circlesPxs = map (circlePixels . fromIntegral) [2 .. maxStarSize]
@@ -328,7 +332,7 @@ circlesPxs = map (circlePixels . fromIntegral) [2 .. maxStarSize]
 translateCircle x y = Map.mapKeys (+ x) . Map.map (Set.map (+ y))
 
 drawStars :: P.Image Word16 -> [Star] -> IO (P.Image P.PixelRGB16)
-drawStars img@P.Image {..} stars = do
+drawStars img@P.Image{..} stars = do
   let centers = sort $ map (\s -> (round s.starPosition.x, round s.starPosition.y)) stars
       circles = Map.unionsWith Set.union $ map (\s -> translateCircle (round s.starPosition.x) (round s.starPosition.y) $ circlesPxs !! round s.starRadius) stars
   targetImg <- P.newMutableImage imageWidth imageHeight
@@ -362,16 +366,16 @@ mapElemRemove (x, y) m =
     (xSmaller, Just ySet, xBigger)
       | Map.null xSmaller -> case Set.splitMember y ySet of
           (ySmaller, res, yBigger)
-            | Set.null ySmaller,
-              Set.null yBigger ->
+            | Set.null ySmaller
+            , Set.null yBigger ->
                 (res, xBigger)
             | Set.null ySmaller -> (res, Map.insert x yBigger xBigger)
             | Set.null yBigger -> (res, Map.insert x ySmaller xBigger)
             | otherwise -> (res, Map.insert x (Set.union ySmaller yBigger) xBigger)
       | Map.null xBigger -> case Set.splitMember y ySet of
           (ySmaller, res, yBigger)
-            | Set.null ySmaller,
-              Set.null yBigger ->
+            | Set.null ySmaller
+            , Set.null yBigger ->
                 (res, xSmaller)
             | Set.null ySmaller -> (res, Map.insert x yBigger xSmaller)
             | Set.null yBigger -> (res, Map.insert x ySmaller xSmaller)
@@ -379,8 +383,8 @@ mapElemRemove (x, y) m =
       | otherwise ->
           case Set.splitMember y ySet of
             (ySmaller, res, yBigger)
-              | Set.null ySmaller,
-                Set.null yBigger ->
+              | Set.null ySmaller
+              , Set.null yBigger ->
                   (res, Map.union xSmaller xBigger)
               | Set.null ySmaller -> (res, Map.insert x yBigger $ Map.union xSmaller xBigger)
               | Set.null yBigger -> (res, Map.insert x ySmaller $ Map.union xSmaller xBigger)
@@ -415,15 +419,15 @@ generateTransforms = mapM (\img -> (img,) <$> generateTransform)
 applyTransform :: Alignment -> Tiff -> Tiff
 applyTransform alg img =
   P.generateImage generatePixel img.imageWidth img.imageHeight
-  where
-    generatePixel x' y' =
-      let Position {..} = fmap round $ applyAlignment alg $ Position (fromIntegral x') (fromIntegral y')
-       in if 0 <= x
-            && x < img.imageWidth
-            && 0 <= y
-            && y < img.imageHeight
-            then P.pixelAt img x y
-            else P.PixelRGB16 0 0 0
+ where
+  generatePixel x' y' =
+    let Position{..} = fmap round $ applyAlignment alg $ Position (fromIntegral x') (fromIntegral y')
+     in if 0 <= x
+          && x < img.imageWidth
+          && 0 <= y
+          && y < img.imageHeight
+          then P.pixelAt img x y
+          else P.PixelRGB16 0 0 0
 
 generateTestTiffs :: IO ()
 generateTestTiffs = do
@@ -452,7 +456,7 @@ generateTestTiffs = do
 
 test :: IO ()
 test = do
-  Right (P.ImageY8 lumaTiff8@P.Image {..}) <- P.readTiff "./resources/tmp/PIA17005_luma.tiff"
+  Right (P.ImageY8 lumaTiff8@P.Image{..}) <- P.readTiff "./resources/tmp/PIA17005_luma.tiff"
   let lumaTiff = P.pixelMap pixel8ToPixel16 lumaTiff8
   putStrLn $ "Width: " <> show imageWidth
   putStrLn $ "Height: " <> show imageHeight
@@ -520,3 +524,128 @@ test = do
 -- Executed in  117.51 secs    fish           external
 --    usr time  115.17 secs  496.00 micros  115.17 secs
 --    sys time   25.45 secs  738.00 micros   25.45 secs
+
+starDataToStars :: Int -> Int -> StarData -> [Star]
+starDataToStars width height (StarData _ starInfos) = map extractStar starInfos
+ where
+  extractStar :: StarInfo -> Star
+  extractStar StarInfo{..} = Star (uncurry Position $ bimap (\h -> fromIntegral height - h) (\w -> fromIntegral width - w) center) meanRadius
+
+printDims :: P.Image a -> IO ()
+printDims img = putStrLn $ "WxH: " <> show img.imageWidth <> "x" <> show img.imageHeight
+
+drawDSSStars :: IO ()
+drawDSSStars = do
+  Right (P.ImageY16 lumaTiff@P.Image{..}) <- P.readTiff "./resources/M82/2018-06-20/lights/DSC00580_luma.tiff"
+  printDims lumaTiff
+  let stars = locateStars' defaultLocatingConfig lumaTiff
+  lumaWithStars <- drawStars lumaTiff stars
+  P.writeTiff "./resources/M82/2018-06-20/lights/DSC00580_stars.tiff" lumaWithStars
+
+data LocatingConfig
+  = LocatingConfig
+  { minStarRadius :: Int
+  -- ^ Minimum radius for a star to be considered.
+  , maxStarRadius :: Int
+  -- ^ Maximum radius for a star to be considered.
+  , minStarDistanceRatio :: Double
+  -- ^ Minimum ratio of the distance of two stars to the bigger of their radii.
+  , borderHoldBack :: Int
+  -- ^ Number of pixels around the boarder to ignore when looking for stars.
+  , starIntensityPercentile :: Double
+  -- ^ Intensity percentile to be even considered as a star.
+  , maxStarAsymmetry :: Int
+  -- ^ Maximum allowed asymmetry in star radius.
+  , pixelBrighterThreshold :: Double
+  -- ^ Percentage a neighbouring pixel has to be brighter for the original pixel to no longer be considered a star center.
+  , starCutoffThreshold :: Double
+  -- ^ Percentage of original intensity at which a star is considered to have stopped.
+  }
+  deriving (Show)
+
+defaultLocatingConfig :: LocatingConfig
+defaultLocatingConfig =
+  LocatingConfig
+    { minStarRadius = 2
+    , maxStarRadius = 50
+    , minStarDistanceRatio = 1.5
+    , borderHoldBack = 50
+    , starIntensityPercentile = 0.8
+    , maxStarAsymmetry = 3
+    , pixelBrighterThreshold = 0.1
+    , starCutoffThreshold = 0.5
+    }
+
+{- | A `Star` has to be somewhat round
+and its center has to be the brightest spot.
+-}
+locateStars' :: LocatingConfig -> P.Image Word16 -> [Star]
+locateStars' lc img =
+  let hist = Map.keys $ intensityHistogram img
+      numberHistogramElements = length hist
+      minIntensityForStar = head $ drop (scale lc.starIntensityPercentile numberHistogramElements) hist
+      allowedAsymmetries = [0 .. lc.maxStarAsymmetry]
+   in foldl' (findStars lc minIntensityForStar img) [] allowedAsymmetries
+ where
+
+findStars :: LocatingConfig -> Word16 -> P.Image Word16 -> [Star] -> Int -> [Star]
+findStars lc minIntensityForStar img foundStars allowedAsymmetry =
+  P.pixelFold
+    ( \knownStars x y pixelIntensity ->
+        if
+          | x <= lc.borderHoldBack || x >= img.imageWidth - lc.borderHoldBack || y <= lc.borderHoldBack || y >= img.imageHeight - lc.borderHoldBack -> knownStars
+          | pixelIntensity < minIntensityForStar -> knownStars
+          | isTooCloseToStar lc foundStars x y -> knownStars
+          | otherwise ->
+              case castRays lc x y pixelIntensity img of
+                Nothing -> knownStars
+                Just newStar -> trace ("found start: " <> show newStar) $ newStar : knownStars
+    )
+    foundStars
+    img
+
+scale :: (Integral a) => Double -> a -> a
+scale scalar n = round $ fromIntegral n * scalar
+
+castRays :: LocatingConfig -> Int -> Int -> Word16 -> P.Image Word16 -> Maybe Star
+castRays lc x y pixelIntensity img =
+  let rays = generateRays x y lc.maxStarRadius img
+      firstRay = RayStep 0 0 0 0 0 0 0 0
+   in starFromRayStep x y <$> foldl' step (Just firstRay) rays
+ where
+  step :: Maybe (RayStep Int) -> RayStep Word16 -> Maybe (RayStep Int)
+  step Nothing _ = Nothing
+  step (Just acc) rs
+    | any (>= scale lc.pixelBrighterThreshold pixelIntensity) rs = Nothing
+    | otherwise =
+        Just $
+          zipWithRayStep
+            ( \i intensity ->
+                if intensity < scale lc.starCutoffThreshold pixelIntensity
+                  then i
+                  else i + 1
+            )
+            acc
+            rs
+
+avg :: (Fractional a1, Integral a2, Foldable t) => t a2 -> a1
+avg xs = fromIntegral (sum xs) / fromIntegral (length xs)
+
+starFromRayStep :: Int -> Int -> RayStep Int -> Star
+starFromRayStep x y rs =
+  let meanRadius =
+        avg
+          [ rs.north + rs.south
+          , rs.northEast + rs.southWest
+          , rs.east + rs.west
+          , rs.southEast + rs.northWest
+          ]
+   in Star (Position (fromIntegral x) (fromIntegral y)) meanRadius
+
+isTooCloseToStar :: LocatingConfig -> [Star] -> Int -> Int -> Bool
+isTooCloseToStar lc knownStars x y = any tooCloseToStar knownStars
+ where
+  tooCloseToStar :: Star -> Bool
+  tooCloseToStar s =
+    let distanceToStar = distance s.starPosition (Position (fromIntegral x) (fromIntegral y))
+     in lc.minStarDistanceRatio * s.starRadius >= distanceToStar
